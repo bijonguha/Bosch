@@ -4,7 +4,6 @@ Created on Mon Aug 19 16:14:28 2019
 
 @author: BIG1KOR
 """
-
 from skimage.color import rgb2gray
 import numpy as np
 import cv2
