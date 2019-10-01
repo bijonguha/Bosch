@@ -6,9 +6,10 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-#import imutils
 
-#%%
+#Global Variable
+dict_clean_img = {}
+
 '''
 Workspace Detection
 '''
@@ -46,11 +47,11 @@ def sort_contours(cnts, method="left-to-right"):
     return (cnts, boundingBoxes)
 
 def extract_box(img, show=True):
-    """
+    '''
     Function to extract the boxes in the ruled worksheet
-    Input : Image with rectangle
-    Output : Extract workspaces
-    """
+    Input : Image with rectangle, show figures
+    Output : Extract workspaces locations
+    '''
     image_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
     #Otsu thresholding
@@ -103,7 +104,7 @@ def extract_box(img, show=True):
         rectangle_locs.append([x,y,w,h])        
     
     if (show):
-        fig = plt.figure(figsize=(6,8))
+        fig = plt.figure(figsize=(7,9))
         fig.suptitle('Extracted Workspaces')
         i=1
         l = len(rectangle_locs)
@@ -115,8 +116,6 @@ def extract_box(img, show=True):
         
     return rectangle_locs
 
-
-#%%
 '''
 Line Detection
 '''
@@ -124,7 +123,7 @@ Line Detection
 def find_good_contours_thres(conts, alpha = 0.002):
     '''
     Function to find threshold of good contours on basis of 10% of maximum area
-    Input: Contours
+    Input: Contours, threshold for removing noises
     Output: Contour area threshold
     '''
     #Calculating areas of contours and appending them to a list
@@ -137,14 +136,15 @@ def find_good_contours_thres(conts, alpha = 0.002):
     
     return thres
 
-def extract_line(image, ruled = False):
+def extract_line(image, beta=0.8, show = True):
     '''
     Function to extracts the line from the image   
     Assumption : Sufficient gap b/w lines
     
     argument:
         img (array): image array
-        ruled(bool) : whether the input image is ruled or not
+        beta (0-1) : Parameter to differentiate line
+        show(bool) : to show figures or not
     output:
         uppers[diff_index]  : Upper points (x,y)
         lowers[diff_index]  : lower points(x,y)
@@ -191,25 +191,6 @@ def extract_line(image, ruled = False):
     
     #Getting back the cleaned original image without noise
     cleaned_orig = cv2.erode(cleaned_img, kernel, iterations=1) 
-
-    fig0 = plt.figure(figsize=(15,5))
-    ax1 = fig0.add_subplot(1,3,1)
-    ax1.set_title('Original Image')
-    ax1.imshow(box)
-    ax1.axis('off')
-    
-    ax2 = fig0.add_subplot(1,3,2)
-    ax2.set_title('Cleaned Image')
-    ax2.imshow(cv2.cvtColor(cleaned_img, cv2.COLOR_GRAY2RGB))
-    ax2.axis('off')
-    
-    ax3 = fig0.add_subplot(1,3,3)
-    ax3.set_title('Noises')
-    ax3.imshow(cv2.cvtColor(mask, cv2.COLOR_BGR2RGB))
-    ax3.axis('off')
-    
-    fig0.suptitle('Denoising')
-    plt.show()
     
     ## (5) find and draw the upper and lower boundary of each lines
     hist = cv2.reduce(dil_cleaned_img,1, cv2.REDUCE_AVG).reshape(-1)
@@ -220,38 +201,72 @@ def extract_line(image, ruled = False):
     lowers = np.array([y for y in range(H-1) if hist[y]>th and hist[y+1]<=th])
     
     diff = np.array([j-i for i,j in zip(uppers,lowers)])
-    diff_index = np.array([True if j > (np.mean(diff)-np.std(diff)) else False for j in diff ])
-    
-    cleaned_img = cv2.cvtColor(cleaned_img, cv2.COLOR_GRAY2BGR)
+    diff_index = np.array([True if j > beta*(np.mean(diff)-np.std(diff)) else False for j in diff ])
     
     uppers[1:] = [i-int(j)/3 for i,j in zip(uppers[1:], diff[1:])]
     lowers[:-1] = [i+int(j)/3 for i,j in zip(lowers[:-1], diff[:-1])]
 
     cleaned_orig_rec = cv2.cvtColor(cleaned_orig, cv2.COLOR_GRAY2BGR)
     
-    for left,right in zip(uppers, lowers):
+    #For changing color of intermediate lines, keeping count
+    col_ct = 0
+    
+    for left,right in zip(uppers[diff_index], lowers[diff_index]):
         print(left,right)
-        cv2.rectangle(cleaned_orig_rec ,(0+10,left),(W-15,right),(153,255,255),4)
-
-    fig1 = plt.figure(figsize=(15,5))
-    fig1.suptitle('Line Detection')
-    ax1 = fig1.add_subplot(1,2,1)
-    ax1.axis("off")
-    ax1.imshow(cv2.cvtColor(cleaned_orig,cv2.COLOR_BGR2RGB))
+        col1 = (153,255,255)
+        col2 = (255,255,153)
+        if(col_ct % 2 == 0):
+            col= col1
+        else: 
+            col=col2
+        cv2.rectangle(cleaned_orig_rec ,(0+10,left),(W-15,right),col,4)
+        col_ct += 1
+        
+    if(show == True):
+        fig0 = plt.figure(figsize=(15,5))
+        ax1 = fig0.add_subplot(1,3,1)
+        ax1.set_title('Original Image')
+        ax1.imshow(box)
+        ax1.axis('off')
+        
+        ax2 = fig0.add_subplot(1,3,2)
+        ax2.set_title('Cleaned Image')
+        ax2.imshow(cv2.cvtColor(cleaned_img, cv2.COLOR_GRAY2RGB))
+        ax2.axis('off')
+        
+        ax3 = fig0.add_subplot(1,3,3)
+        ax3.set_title('Noises')
+        ax3.imshow(cv2.cvtColor(mask, cv2.COLOR_BGR2RGB))
+        ax3.axis('off')
+        
+        fig0.suptitle('Denoising')
+        plt.show()
     
-    ax2 = fig1.add_subplot(1,2,2)    
-    ax2.axis("off")
-    ax2.imshow(cv2.cvtColor(cleaned_orig_rec, cv2.COLOR_BGR2RGB))
-    
-    plt.show()
+        fig1 = plt.figure(figsize=(15,5))
+        fig1.suptitle('Line Detection')
+        ax1 = fig1.add_subplot(1,2,1)
+        ax1.axis("off")
+        ax1.imshow(cv2.cvtColor(cleaned_orig,cv2.COLOR_BGR2RGB))
+        
+        ax2 = fig1.add_subplot(1,2,2)    
+        ax2.axis("off")
+        ax2.imshow(cv2.cvtColor(cleaned_orig_rec, cv2.COLOR_BGR2RGB))
+        
+        plt.show()
     
     return cleaned_orig, uppers[diff_index], lowers[diff_index]
 
-#%%  
-def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img):
+#Y1=102
+#Y2=282
+#X1=0
+#X2=2695
+#line_name=00
+#box_num=0
+#dict_clean = dict_clean_img
+
+def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show = True):
     '''
     text_segment : Function to segment the characters
-
     '''
     img = dict_clean[box_num][Y1:Y2,X1:X2].copy()
     
@@ -262,75 +277,78 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img):
     
     # Find the contours
     contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-    contours_sorted,bounding_boxes = sort_contours(contours,method="left-to-right")
+    ct_th = find_good_contours_thres(contours)
+    cnts = []
+    for c in contours:       
+        if( cv2.contourArea(c)**2 > ct_th):
+            cnts.append(c)
+    contours_sorted,bounding_boxes = sort_contours(cnts,method="left-to-right")
     char_locs = []
     
-    # For each contour, find the bounding rectangle and draw it
-    contours_sorted = list(contours_sorted)
-    x1l = y1l = x2l = y2l = 0
+    
     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    
     i = 0
     char_type =[]
     while i in range(0, len(contours_sorted)):
             x,y,w,h = bounding_boxes[i]
             exp = 0
-#            print(x,y,w,h," ",i)
             if i+1 != len(contours_sorted):
-                x1,y1,w1,h1 = bounding_boxes[i+1]
-                if abs(x-x1) < 20:
+               x1,y1,w1,h1 = bounding_boxes[i+1]
+               if abs(x-x1) < 20:
                     
-                    minX = min(x,x1)
-                    minY = min(y,y1)
-                    maxX = max(x+w, x1+w1)
-                    maxY = max(y+h, y1+h1)
-                    x,y,x11,y11 = minX, minY, maxX, maxY
+                   minX = min(x,x1)
+                   minY = min(y,y1)
+                   maxX = max(x+w, x1+w1)
+                   maxY = max(y+h, y1+h1)
+                   x,y,x11,y11 = minX, minY, maxX, maxY
                     
-                    x,y,w,h = x,y,x11-x,y11-y
-                    i = i+1
-                    
-
-            if ( y > y1l and (y+w) < y2l and x > x1l and (x+w) < x2l):
-                continue
-            else:
-                cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
-                x1l = x
-                y1l = y
-                x2l = x + w
-                y2l = y + h
-                char_locs.append([x,y,x+w,y+h])
-#                image = draw_contour(img,contours_sorted[i] , i)
+                   x,y,w,h = x,y,x11-x,y11-y
+                   i = i+1
+            
+            #char_locs.append([x,y,x+w,y+h])       
+            char_locs.append([x,y+Y1,x+w,y+h+Y1]) #Normalised location of char w.r.t box image
+            
+            cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
+            
             if y+h < (H*(1/2)):
                 exp = 1
             i = i+1
             char_type.append(exp)
-    plt.figure(figsize=(12,12))    
-    plt.axis("on")
     
-    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    plt.show()
+    if(show == True):        
+        plt.figure(figsize=(15,8))    
+        plt.axis("on")
+        plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        plt.show()
     
     df_char = pd.DataFrame(char_locs)
     df_char.columns=['X1','Y1','X2','Y2']
     df_char['exp'] = char_type
     df_char['line_name'] = line_name
+    df_char['box_num'] = box_num
     
-    return {line_name:df_char}
+    return [box_num,line_name,df_char]
+
+
 #%%
-    
-#%%
-img = cv2.imread("data/image_4.jpg")
+
+img = cv2.imread("data/image_6.jpg")
 workspaces = extract_box(img)
 
 lines_all = []
 df_lines = pd.DataFrame()
-dict_clean_img = {}
 
+count = 0
 for r,rect in enumerate(workspaces):
     box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
     H,W = box.shape[:2]
-    cleaned_orig,y1s,y2s = extract_line(box)
+    cleaned_orig,y1s,y2s = extract_line(box, show=True)
     x1s = [0]*len(y1s)
     x2s = [W]*len(y1s)
+    
+    if(len(y1s)-len(y2s) == 0):
+        print('Lines in workspace-%d : %d' %(r, len(y1s)))
     
     df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
     df.columns = ['y1','y2','x1','x2']
@@ -338,23 +356,38 @@ for r,rect in enumerate(workspaces):
     df_lines= pd.concat([df_lines, df])
 
     dict_clean_img.update({r:cleaned_orig})
-    
+
 df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
-        for i in range(len(df_lines))]    
-#%%
-image = cv2.imread("data/bijon.jpg")
-image = cv2.copyMakeBorder(image,10,10,0,0,cv2.BORDER_CONSTANT,value=[255,255,255])
-plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-plt.show()
+        for i in range(len(df_lines))]
 
-H,W = image.shape[:2]
+#df_chars contains locations of all characters along with box_num and line name
+list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],row['x1'],row['x2'], row['box_num'],row['line_name'], show=False), axis=1))
+df_chars = pd.DataFrame(list_chars)
+df_chars.columns = ['box_num', 'line_name', 'char_df']
 
-y1s,y2s = extract_line(image)
-x1s = 0
-x2s = W
+#Plotting detected Characters
 
-for i,j in zip(y1s,y2s):
-    print(i,j)
-    line_img = image[i:j, x1s:x2s]
-    char_locs = text_segment(line_img)
-    Nchar_locs = [[pt[0]+0,pt[1]+i,pt[2]+0,pt[3]+j] for pt in char_locs]
+box_nums = df_chars.box_num.unique()
+#fig3 = plt.figure(figsize=(7,9))
+#fig3.suptitle('Characters Segmented')
+
+for bn in box_nums:
+    box_img = dict_clean_img[bn]
+    
+    box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
+    
+    df = df_chars[df_chars.box_num == bn]
+    df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, (c['X1'],c['Y1']),(c['X2'], c['Y2']),(153,180,255),2), axis=1 ) )
+
+    scale_percent = 200 # percent of original size
+    width = int(box_img.shape[1] * scale_percent / 100)
+    height = int(box_img.shape[0] * scale_percent / 100)
+    dim = (width, height)    
+    box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
+#    ax = fig3.add_subplot(3,1,bn+1)
+#    ax.axis('off')
+#    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    plt.figure(figsize=(13,7))
+    plt.title('Box - %d' %(bn+1) )
+    plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    
