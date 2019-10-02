@@ -307,7 +307,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
                    i = i+1
             
             #char_locs.append([x,y,x+w,y+h])       
-            char_locs.append([x,y+Y1,x+w,y+h+Y1]) #Normalised location of char w.r.t box image
+            char_locs.append([x,y+Y1,x+w,y+h+Y1,w*h]) #Normalised location of char w.r.t box image
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
             
@@ -323,17 +323,15 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
         plt.show()
     
     df_char = pd.DataFrame(char_locs)
-    df_char.columns=['X1','Y1','X2','Y2']
+    df_char.columns=['X1','Y1','X2','Y2','area']
     df_char['exp'] = char_type
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     
     return [box_num,line_name,df_char]
-
-
 #%%
 
-img = cv2.imread("data/image_6.jpg")
+img = cv2.imread("data/image_4.jpg")
 workspaces = extract_box(img)
 
 lines_all = []
@@ -361,7 +359,9 @@ df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
         for i in range(len(df_lines))]
 
 #df_chars contains locations of all characters along with box_num and line name
-list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],row['x1'],row['x2'], row['box_num'],row['line_name'], show=False), axis=1))
+list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
+             row['x1'],row['x2'], row['box_num'],row['line_name'], show=False), axis=1))
+
 df_chars = pd.DataFrame(list_chars)
 df_chars.columns = ['box_num', 'line_name', 'char_df']
 
@@ -371,12 +371,24 @@ box_nums = df_chars.box_num.unique()
 #fig3 = plt.figure(figsize=(7,9))
 #fig3.suptitle('Characters Segmented')
 
+char_area_list = []
+df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
+
+#Area based threshold for detecting and removing noises
+gamma = 0.10
+max_ar = max([max(i) for i in char_area_list])
+ar_thresh = max_ar*gamma
+
+#Keeping only those characters whose area of contours is above area threshold
+df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
+
 for bn in box_nums:
     box_img = dict_clean_img[bn]
     
     box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
     
     df = df_chars[df_chars.box_num == bn]
+    
     df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, (c['X1'],c['Y1']),(c['X2'], c['Y2']),(153,180,255),2), axis=1 ) )
 
     scale_percent = 200 # percent of original size
