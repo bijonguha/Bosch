@@ -227,7 +227,7 @@ def extract_line(image, beta=0.8, show = True):
         fig0 = plt.figure(figsize=(15,5))
         ax1 = fig0.add_subplot(1,3,1)
         ax1.set_title('Original Image')
-        ax1.imshow(box)
+        ax1.imshow(img)
         ax1.axis('off')
         
         ax2 = fig0.add_subplot(1,3,2)
@@ -269,6 +269,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
     '''
     text_segment : Function to segment the characters
     '''
+    box_h = Y2-Y1
     img = dict_clean[box_num][Y1:Y2,X1:X2].copy()
     
     ## apply some dilation and erosion to join the gaps
@@ -312,7 +313,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
             
-            if y+h < (H*(1/2)):
+            if y+h < (box_h*(1/2)):
                 exp = 1
             i = i+1
             char_type.append(exp)
@@ -332,77 +333,78 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
     return [box_num,line_name,df_char]
 #%%
 
-img = cv2.imread("data/image_4.jpg")
-workspaces = extract_box(img)
-
-lines_all = []
-df_lines = pd.DataFrame()
-
-count = 0
-for r,rect in enumerate(workspaces):
-    box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
-    H,W = box.shape[:2]
-    cleaned_orig,y1s,y2s = extract_line(box, show=True)
-    x1s = [0]*len(y1s)
-    x2s = [W]*len(y1s)
+def checker(image_path,A,B,X,Y):
+    img = cv2.imread(image_path)
+    workspaces = extract_box(img)
     
-    if(len(y1s)-len(y2s) == 0):
-        print('Lines in workspace-%d : %d' %(r, len(y1s)))
+    df_lines = pd.DataFrame()
     
-    df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
-    df.columns = ['y1','y2','x1','x2']
-    df['box_num'] = r
-    df_lines= pd.concat([df_lines, df])
-
-    dict_clean_img.update({r:cleaned_orig})
-
-df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
-        for i in range(len(df_lines))]
-
-#df_chars contains locations of all characters along with box_num and line name
-list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-             row['x1'],row['x2'], row['box_num'],row['line_name'], show=False), axis=1))
-
-df_chars = pd.DataFrame(list_chars)
-df_chars.columns = ['box_num', 'line_name', 'char_df']
-
-#Plotting detected Characters
-
-box_nums = df_chars.box_num.unique()
-#fig3 = plt.figure(figsize=(7,9))
-#fig3.suptitle('Characters Segmented')
-
-char_area_list = []
-df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
-
-#Area based threshold for detecting and removing noises
-gamma = 0.10
-max_ar = max([max(i) for i in char_area_list])
-ar_thresh = max_ar*gamma
-
-#Keeping only those characters whose area of contours is above area threshold
-df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
-
-for bn in box_nums:
-    box_img = dict_clean_img[bn]
+    for r,rect in enumerate(workspaces):
+        box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
+        H,W = box.shape[:2]
+        cleaned_orig,y1s,y2s = extract_line(box,H,W, show=True)
+        x1s = [0]*len(y1s)
+        x2s = [W]*len(y1s)
+        
+        if(len(y1s)-len(y2s) == 0):
+            print('Lines in workspace-%d : %d' %(r, len(y1s)))
+        
+        df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
+        df.columns = ['y1','y2','x1','x2']
+        df['box_num'] = r
+        df_lines= pd.concat([df_lines, df])
     
-    box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
+        dict_clean_img.update({r:cleaned_orig})
     
-    df = df_chars[df_chars.box_num == bn]
+    df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
+            for i in range(len(df_lines))]
     
-    df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, (c['X1'],c['Y1']),(c['X2'], c['Y2']),(153,180,255),2), axis=1 ) )
-
-    scale_percent = 200 # percent of original size
-    width = int(box_img.shape[1] * scale_percent / 100)
-    height = int(box_img.shape[0] * scale_percent / 100)
-    dim = (width, height)    
-    box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
-#    ax = fig3.add_subplot(3,1,bn+1)
-#    ax.axis('off')
-#    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-    plt.figure(figsize=(13,7))
-    plt.title('Box - %d' %(bn+1) )
-    plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-    fname = os.path.join('output','image%d.jpeg' %(bn+1))
-    plt.imsave(fname,cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    #df_chars contains locations of all characters along with box_num and line name
+    list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
+                 row['x1'],row['x2'], row['box_num'],row['line_name'], show=False), axis=1))
     
+    df_chars = pd.DataFrame(list_chars)
+    df_chars.columns = ['box_num', 'line_name', 'char_df']
+    
+    #Plotting detected Characters
+    
+    box_nums = df_chars.box_num.unique()
+    #fig3 = plt.figure(figsize=(7,9))
+    #fig3.suptitle('Characters Segmented')
+    
+    char_area_list = []
+    df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
+    
+    #Area based threshold for detecting and removing noises
+    gamma = 0.10
+    max_ar = max([max(i) for i in char_area_list])
+    ar_thresh = max_ar*gamma
+    
+    #Keeping only those characters whose area of contours is above area threshold
+    df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
+    
+    for bn in box_nums:
+        box_img = dict_clean_img[bn]
+        
+        box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
+        
+        df = df_chars[df_chars.box_num == bn]
+        
+        df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, (c['X1'],c['Y1']),(c['X2'], c['Y2']),(153,180,255),2), axis=1 ) )
+    
+        scale_percent = 200 # percent of original size
+        width = int(box_img.shape[1] * scale_percent / 100)
+        height = int(box_img.shape[0] * scale_percent / 100)
+        dim = (width, height)    
+        box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
+    #    ax = fig3.add_subplot(3,1,bn+1)
+    #    ax.axis('off')
+    #    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+        plt.figure(figsize=(13,7))
+        plt.title('Box - %d' %(bn+1) )
+        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+        fname = os.path.join('output','image%d.jpeg' %(bn+1))
+        plt.imsave(fname,cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    
+    return 1
+        
