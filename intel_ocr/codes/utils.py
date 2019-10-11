@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
 
 #Global Variable
 dict_clean_img = {}
@@ -402,4 +403,6 @@ for bn in box_nums:
     plt.figure(figsize=(13,7))
     plt.title('Box - %d' %(bn+1) )
     plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    fname = os.path.join('output','image%d.jpeg' %(bn+1))
+    plt.imsave(fname,cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
     
