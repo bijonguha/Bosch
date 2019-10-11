@@ -335,14 +335,22 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
 
 def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
+    #reading image
     img = cv2.imread(image_path)
+    #Workspaces Detection
     workspaces = extract_box(img)
     
+    if(len(workspaces) != 3):
+        print('Invalid worksheet image passed')
+        return -1
+    #Defining dataframe for storing infos about every line detected
     df_lines = pd.DataFrame()
     
     for r,rect in enumerate(workspaces):
+        #Cropping boxes for sending to line detection module
         box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
         H,W = box.shape[:2]
+        #Extracting lines present in the boxes
         cleaned_orig,y1s,y2s = extract_line(box, show=True)
         x1s = [0]*len(y1s)
         x2s = [W]*len(y1s)
@@ -409,4 +417,4 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-checker('data/image_1.jpg')
+checker(image_path = 'data/image_1.jpg')
