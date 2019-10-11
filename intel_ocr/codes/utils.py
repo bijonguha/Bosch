@@ -331,9 +331,10 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
     df_char['box_num'] = box_num
     
     return [box_num,line_name,df_char]
-#%%
 
-def checker(image_path,A,B,X,Y):
+
+def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
+    
     img = cv2.imread(image_path)
     workspaces = extract_box(img)
     
@@ -342,7 +343,7 @@ def checker(image_path,A,B,X,Y):
     for r,rect in enumerate(workspaces):
         box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
         H,W = box.shape[:2]
-        cleaned_orig,y1s,y2s = extract_line(box,H,W, show=True)
+        cleaned_orig,y1s,y2s = extract_line(box, show=True)
         x1s = [0]*len(y1s)
         x2s = [W]*len(y1s)
         
@@ -403,8 +404,9 @@ def checker(image_path,A,B,X,Y):
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
         plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-        fname = os.path.join('output','image%d.jpeg' %(bn+1))
+        fname = os.path.join('output','image%d.jpg' %(bn+1))
         plt.imsave(fname,cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
     
     return 1
-        
+#%%
+checker('data/image_1.jpg')
