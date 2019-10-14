@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Oct 14 17:17:29 2019
+
+@author: BIG1KOR
+"""
+
 #Integrated and Cleaned code
 #%%
 
@@ -7,6 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
+from scipy import ndimage
+import math
+import tensorflow as tf
 
 #Global Variable
 dict_clean_img = {}
@@ -46,6 +56,81 @@ def sort_contours(cnts, method="left-to-right"):
 
     # return the list of sorted contours and bounding boxes
     return (cnts, boundingBoxes)
+
+def getBestShift(img):
+    cy,cx = ndimage.measurements.center_of_mass(img)
+    rows,cols = img.shape
+    shiftx = np.round(cols/2.0-cx).astype(int)
+    shifty = np.round(rows/2.0-cy).astype(int)
+
+    return shiftx,shifty
+
+
+def shift(img,sx,sy):
+    rows,cols = img.shape
+    M = np.float32([[1,0,sx],[0,1,sy]])
+    shifted = cv2.warpAffine(img,M,(cols,rows))
+    return shifted
+
+
+def predict(img,x1,y1,x2,y2,model):
+    '''
+    predict  : Function to predict the character
+    argument:
+    x1,y1(int,int)    : Top left corner point
+    x2,y2(int,int)    : Bottom right corner point
+    output:
+    c[index](int) : predicted character 
+    
+    '''
+    gray = img[y1:y2, x1:x2]
+    kernel = np.ones((3,3), np.uint8) 
+##    gray = cv2.erode(gray, kernel,iterations=1)
+#    
+    gray = cv2.dilate(gray, kernel, iterations=4)
+    
+    while np.sum(gray[0]) == 0:
+        gray = gray[1:]
+
+    while np.sum(gray[:,0]) == 0:
+        gray = np.delete(gray,0,1)
+
+    while np.sum(gray[-1]) == 0:
+        gray = gray[:-1]
+
+    while np.sum(gray[:,-1]) == 0:
+        gray = np.delete(gray,-1,1)
+
+    rows,cols = gray.shape
+
+    if rows > cols:
+        factor = 20.0/rows
+        rows = 20
+        cols = int(round(cols*factor))
+        # first cols than rows
+        gray = cv2.resize(gray, (cols,rows),interpolation=cv2.INTER_AREA)
+    else:
+        factor = 20.0/cols
+        cols = 20
+        rows = int(round(rows*factor))
+        # first cols than rows
+        gray = cv2.resize(gray, (cols, rows),interpolation=cv2.INTER_AREA)
+    colsPadding = (int(math.ceil((28-cols)/2.0)),int(math.floor((28-cols)/2.0)))
+    rowsPadding = (int(math.ceil((28-rows)/2.0)),int(math.floor((28-rows)/2.0)))
+    gray = np.lib.pad(gray,(rowsPadding,colsPadding),'constant')
+    shiftx,shifty = getBestShift(gray)
+    shifted = shift(gray,shiftx,shifty)
+    gray = shifted
+#    gray = cv2.erode(gray, kernel,iterations=1)
+#    plt.imshow(gray)
+#    plt.show()
+    gray = gray.reshape(1,1,28,28)
+    classes = model.predict(gray, batch_size=2)
+    index = np.argmax(classes[0])  
+    c = ['0','1','2','3','4','5','6','7','8','9','+','-','times','(',')']
+
+#    print(c[index])
+    return c[index]
 
 def extract_box(img, show=True):
     '''
@@ -205,7 +290,7 @@ def extract_line(image, beta=0.8, show = True):
     diff_index = np.array([True if j > beta*(np.mean(diff)-np.std(diff)) else False for j in diff ])
     
     uppers[1:] = [i-int(j)/3 for i,j in zip(uppers[1:], diff[1:])]
-    lowers[:-1] = [i+int(j)/3 for i,j in zip(lowers[:-1], diff[:-1])]
+    lowers[:-1] = [i+int(j)/4 for i,j in zip(lowers[:-1], diff[:-1])]
 
     cleaned_orig_rec = cv2.cvtColor(cleaned_orig, cv2.COLOR_GRAY2BGR)
     
@@ -265,28 +350,26 @@ def extract_line(image, beta=0.8, show = True):
 #box_num=0
 #dict_clean = dict_clean_img
 
-def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show = True):
+def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
     '''
     text_segment : Function to segment the characters
     '''
-    box_h = Y2-Y1
     img = dict_clean[box_num][Y1:Y2,X1:X2].copy()
-    
+    L_H = Y2-Y1
     ## apply some dilation and erosion to join the gaps
     #Selecting elliptical element for dilation    
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-    dilation = cv2.dilate(img,kernel,iterations = 2)
+    dilation = cv2.dilate(img,kernel,iterations = 1)
     
     # Find the contours
     contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-    ct_th = find_good_contours_thres(contours)
+    ct_th = find_good_contours_thres(contours, alpha=0.01)
     cnts = []
     for c in contours:       
         if( cv2.contourArea(c)**2 > ct_th):
             cnts.append(c)
     contours_sorted,bounding_boxes = sort_contours(cnts,method="left-to-right")
     char_locs = []
-    
     
     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     
@@ -296,25 +379,26 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
             x,y,w,h = bounding_boxes[i]
             exp = 0
             if i+1 != len(contours_sorted):
-               x1,y1,w1,h1 = bounding_boxes[i+1]
-               if abs(x-x1) < 20:
+                x1,y1,w1,h1 = bounding_boxes[i+1]
+                if abs(x-x1) < 20:
                     
-                   minX = min(x,x1)
-                   minY = min(y,y1)
-                   maxX = max(x+w, x1+w1)
-                   maxY = max(y+h, y1+h1)
-                   x,y,x11,y11 = minX, minY, maxX, maxY
+                    minX = min(x,x1)
+                    minY = min(y,y1)
+                    maxX = max(x+w, x1+w1)
+                    maxY = max(y+h, y1+h1)
+                    x,y,x11,y11 = minX, minY, maxX, maxY
                     
-                   x,y,w,h = x,y,x11-x,y11-y
-                   i = i+1
+                    x,y,w,h = x,y,x11-x,y11-y
+                    i = i+1
             
             #char_locs.append([x,y,x+w,y+h])       
             char_locs.append([x,y+Y1,x+w,y+h+Y1,w*h]) #Normalised location of char w.r.t box image
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
-            
-            if y+h < (box_h*(1/2)):
-                exp = 1
+            if i!=0:
+                if y+h < (L_H*(1/2)) and y < bounding_boxes[i-1][1]:
+                    exp = 1
+                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
             i = i+1
             char_type.append(exp)
     
@@ -327,14 +411,15 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name,dict_clean = dict_clean_img, show
     df_char = pd.DataFrame(char_locs)
     df_char.columns=['X1','Y1','X2','Y2','area']
     df_char['exp'] = char_type
+    #df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],c['Y1'],c['X2'], c['Y2'],model), axis=1 )
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
-    
     return [box_num,line_name,df_char]
-
 
 def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
+    #loading models
+    model = tf.keras.models.load_model('models/DCNNSy.h5')
     #reading image
     img = cv2.imread(image_path)
     #Workspaces Detection
@@ -370,7 +455,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     #df_chars contains locations of all characters along with box_num and line name
     list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-                 row['x1'],row['x2'], row['box_num'],row['line_name'], show=False), axis=1))
+                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=False), axis=1))
     
     df_chars = pd.DataFrame(list_chars)
     df_chars.columns = ['box_num', 'line_name', 'char_df']
@@ -385,7 +470,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
     
     #Area based threshold for detecting and removing noises
-    gamma = 0.10
+    gamma = 0
     max_ar = max([max(i) for i in char_area_list])
     ar_thresh = max_ar*gamma
     
@@ -417,4 +502,6 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-checker(image_path = 'data/image_1.jpg')
+checker(image_path = 'data/image_5.jpg')
+
+#%%
