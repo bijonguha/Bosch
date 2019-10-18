@@ -152,7 +152,7 @@ def predict(img,x1,y1,x2,y2,model):
     # Prediction
     classes = model.predict(gray, batch_size=2)
     index = np.argmax(classes[0])  
-    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
+    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','*(',')']
 
 #    print(c[index])
     return c[index]
