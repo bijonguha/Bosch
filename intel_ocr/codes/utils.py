@@ -416,13 +416,14 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     ## apply some dilation and erosion to join the gaps
     #Selecting elliptical element for dilation    
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-    dilation = cv2.dilate(img,kernel,iterations = 1)
+    dilation = cv2.dilate(img,kernel,iterations = 3)
+    erosion = cv2.dilate(dilation,kernel,iterations = 2)
     
     # Find the contours
     if(cv2.__version__ == '3.3.1'):
-        xyz,contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        xyz,contours,hierarchy = cv2.findContours(erosion,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
     else:
-        contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        contours,hierarchy = cv2.findContours(erosion,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
         
     ct_th = find_good_contours_thres(contours, alpha=0.01)
     cnts = []
@@ -484,7 +485,11 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         A, B, X, Y (int)    : coefficients
     '''    
     #loading models
-    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+    try:
+        model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+    except:
+        print('Model couldnot be loaded')
+        return -1
     #reading image
     img = cv2.imread(image_path)
     #Workspaces Detection
@@ -577,13 +582,13 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
         plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
-        fname = os.path.join('output1','image%d.jpg' %(bn+1))
+        fname = os.path.join('output','image%d.jpg' %(bn+1))
         plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
         del df_l
     
     return 1
 #%%
-checker('data/image_5.jpg', 12,9,1,4)
-#checker(image_path = "C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
+checker('data/image_1.jpg', 56,7,3,13)
+#checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
