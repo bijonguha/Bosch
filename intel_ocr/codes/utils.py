@@ -416,8 +416,8 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     ## apply some dilation and erosion to join the gaps
     #Selecting elliptical element for dilation    
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-    dilation = cv2.dilate(img,kernel,iterations = 3)
-    erosion = cv2.dilate(dilation,kernel,iterations = 2)
+    dilation = cv2.dilate(img,kernel,iterations = 2)
+    erosion = cv2.dilate(dilation,kernel,iterations = 1)
     
     # Find the contours
     if(cv2.__version__ == '3.3.1'):
@@ -453,7 +453,12 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
                     x,y,w,h = x,y,x11-x,y11-y
                     i = i+1
             
-            #char_locs.append([x,y,x+w,y+h])       
+            #char_locs.append([x,y,x+w,y+h])     
+            if(h<0.25*L_H and w<0.25*L_H):
+                #print('Yes')
+                i=i+1
+                continue
+            
             char_locs.append([x,y+Y1,x+w,y+h+Y1,w*h]) #Normalised location of char w.r.t box image
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
@@ -581,7 +586,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
 
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
-        plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
         fname = os.path.join('output','image%d.jpg' %(bn+1))
         plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
@@ -589,6 +594,6 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-checker('data/image_1.jpg', 56,7,3,13)
+checker('data/image_7.jpg', 56,7,3,13)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
