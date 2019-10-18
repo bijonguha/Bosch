@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Oct 14 17:17:29 2019
-
 @author: BIG1KOR
 """
 
@@ -16,10 +15,14 @@ import pandas as pd
 import os
 from scipy import ndimage
 import math
-import tensorflow as tf
+import keras
 
 #Global Variable
-dict_clean_img = {}
+dict_clean_img = {} #BINARY IMAGE DICTIONAY
+dict_img = {} #ORIGINAL IMAGE DICTIONARY
+
+#Keras support channel first (1,28,28) only
+keras.backend.set_image_data_format("channels_first")
 
 '''
 Workspace Detection
@@ -57,7 +60,15 @@ def sort_contours(cnts, method="left-to-right"):
     # return the list of sorted contours and bounding boxes
     return (cnts, boundingBoxes)
 
+
 def getBestShift(img):
+    '''
+    getBestShift : Function to calculate centre of mass and get the best shifts
+    argument:
+        img (array) : gray scale image
+    output:
+        shiftx, shifty: x,y shift direction
+    '''
     cy,cx = ndimage.measurements.center_of_mass(img)
     rows,cols = img.shape
     shiftx = np.round(cols/2.0-cx).astype(int)
@@ -67,6 +78,14 @@ def getBestShift(img):
 
 
 def shift(img,sx,sy):
+    '''
+    Shift : Function to shift the image in given direction 
+    argument:
+        img (array) : gray scale image
+        sx, sy      : x, y direction
+    output:
+        shifted : shifted image
+    '''
     rows,cols = img.shape
     M = np.float32([[1,0,sx],[0,1,sy]])
     shifted = cv2.warpAffine(img,M,(cols,rows))
@@ -77,18 +96,22 @@ def predict(img,x1,y1,x2,y2,model):
     '''
     predict  : Function to predict the character
     argument:
-    x1,y1(int,int)    : Top left corner point
-    x2,y2(int,int)    : Bottom right corner point
+        x1,y1(int,int)    : Top left corner point
+        x2,y2(int,int)    : Bottom right corner point
+        model             : deep learning model
     output:
-    c[index](int) : predicted character 
+        c[index](int) : predicted character 
     
     '''
     gray = img[y1:y2, x1:x2]
-    kernel = np.ones((3,3), np.uint8) 
-##    gray = cv2.erode(gray, kernel,iterations=1)
-#    
-    gray = cv2.dilate(gray, kernel, iterations=4)
     
+    # Image Preprocessing
+    kernel = np.ones((1,1), np.uint8) 
+    gray = cv2.dilate(gray, kernel, iterations=1)    
+    gray = cv2.GaussianBlur(gray,(7,7),0)
+    gray = cv2.dilate(gray, kernel, iterations=2)
+    gray = cv2.erode(gray, kernel,iterations=1)
+    # Removing rows and columns where all the pixels are black
     while np.sum(gray[0]) == 0:
         gray = gray[1:]
 
@@ -102,32 +125,34 @@ def predict(img,x1,y1,x2,y2,model):
         gray = np.delete(gray,-1,1)
 
     rows,cols = gray.shape
-
+    # Making the aspect ratio same before re-sizing
     if rows > cols:
         factor = 20.0/rows
         rows = 20
         cols = int(round(cols*factor))
         # first cols than rows
-        gray = cv2.resize(gray, (cols,rows),interpolation=cv2.INTER_AREA)
+        gray = cv2.resize(gray, (cols,rows),interpolation=cv2.INTER_CUBIC)
     else:
         factor = 20.0/cols
         cols = 20
         rows = int(round(rows*factor))
         # first cols than rows
-        gray = cv2.resize(gray, (cols, rows),interpolation=cv2.INTER_AREA)
+        gray = cv2.resize(gray, (cols, rows),interpolation=cv2.INTER_CUBIC)
+    # Padding to a 28 * 28 image
     colsPadding = (int(math.ceil((28-cols)/2.0)),int(math.floor((28-cols)/2.0)))
     rowsPadding = (int(math.ceil((28-rows)/2.0)),int(math.floor((28-rows)/2.0)))
     gray = np.lib.pad(gray,(rowsPadding,colsPadding),'constant')
+    # Get the best shifts
     shiftx,shifty = getBestShift(gray)
     shifted = shift(gray,shiftx,shifty)
     gray = shifted
-#    gray = cv2.erode(gray, kernel,iterations=1)
-#    plt.imshow(gray)
-#    plt.show()
     gray = gray.reshape(1,1,28,28)
+    #Normalize the image
+    gray = gray/255
+    # Prediction
     classes = model.predict(gray, batch_size=2)
     index = np.argmax(classes[0])  
-    c = ['0','1','2','3','4','5','6','7','8','9','+','-','times','(',')']
+    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
 
 #    print(c[index])
     return c[index]
@@ -166,7 +191,11 @@ def extract_box(img, show=True):
     (thresh, img_final_bin) = cv2.threshold(img_final_bin, 0,255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
     
     #Find and sort the contours
-    contours, hierarchy = cv2.findContours(img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if(cv2.__version__ == '3.3.1'): 
+        xyz,contours, hierarchy = cv2.findContours(img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        contours, hierarchy = cv2.findContours(img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
     (contours, boundingBoxes) = sort_contours(contours, method="top-to-bottom")
     
     area = []
@@ -258,7 +287,11 @@ def extract_line(image, beta=0.8, show = True):
     temp = dilation.copy()
     
     # Find the contours
-    contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    if(cv2.__version__ == '3.3.1'): 
+        xyz,contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        
     cont_thresh = find_good_contours_thres(contours)
 
     #Creating a mask of only ones    
@@ -350,6 +383,30 @@ def extract_line(image, beta=0.8, show = True):
 #box_num=0
 #dict_clean = dict_clean_img
 
+def evaluate(df,A,B,X,Y):
+    '''Function to evaluate mathematical equation and give bool output
+    Input: Dataframe
+           Values
+    Output:
+        Boolean T/F
+    '''
+    #Evaluating Expression
+    actual = eval("(A*X*X)+(B*Y)")
+    
+    
+    try:#If BODMAS is correct and Mathematically equation is correct
+        pred = df["exp"].apply(lambda d: "**" if d==1 else "")
+        pred = "".join(list(pred+df["pred"]))
+        print("pred ",pred)
+        ans = eval(pred)
+        print(ans, actual)
+    except Exception as e:
+        print(e)
+        return False
+    
+    return actual==ans
+
+
 def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
     '''
     text_segment : Function to segment the characters
@@ -362,7 +419,11 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     dilation = cv2.dilate(img,kernel,iterations = 1)
     
     # Find the contours
-    contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    if(cv2.__version__ == '3.3.1'):
+        xyz,contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        
     ct_th = find_good_contours_thres(contours, alpha=0.01)
     cnts = []
     for c in contours:       
@@ -411,15 +472,19 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     df_char = pd.DataFrame(char_locs)
     df_char.columns=['X1','Y1','X2','Y2','area']
     df_char['exp'] = char_type
-    #df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],c['Y1'],c['X2'], c['Y2'],model), axis=1 )
+    df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],c['Y1'],c['X2'], c['Y2'],model), axis=1 )
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     return [box_num,line_name,df_char]
 
 def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
-    
+    '''
+    argument:
+        image_path (string): image path
+        A, B, X, Y (int)    : coefficients
+    '''    
     #loading models
-    model = tf.keras.models.load_model('models/DCNNSy.h5')
+    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
     #reading image
     img = cv2.imread(image_path)
     #Workspaces Detection
@@ -436,7 +501,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
         H,W = box.shape[:2]
         #Extracting lines present in the boxes
-        cleaned_orig,y1s,y2s = extract_line(box, show=True)
+        cleaned_orig,y1s,y2s = extract_line(box, show=False)
         x1s = [0]*len(y1s)
         x2s = [W]*len(y1s)
         
@@ -446,9 +511,13 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
         df.columns = ['y1','y2','x1','x2']
         df['box_num'] = r
+
         df_lines= pd.concat([df_lines, df])
     
         dict_clean_img.update({r:cleaned_orig})
+        dict_img.update({r:box})
+        
+        #print(df)
     
     df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
             for i in range(len(df_lines))]
@@ -478,14 +547,18 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
     
     for bn in box_nums:
-        box_img = dict_clean_img[bn]
-        
+        box_img = dict_clean_img[bn] #For Processing B/W image
+        box_img_1 = dict_img[bn] #For saving results
         box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
         
-        df = df_chars[df_chars.box_num == bn]
+        df = df_chars[df_chars.box_num == bn].copy()
+        df_l = df_lines[df_lines["box_num"]==bn].copy() #Defining dF with line info
         
-        df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, (c['X1'],c['Y1']),(c['X2'], c['Y2']),(153,180,255),2), axis=1 ) )
-    
+        df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, \
+          (c['X1'],c['Y1']),(c['X2'], c['Y2']),(255*(c['exp']==1),180,0),2+(2*c['exp'])), axis=1 ) )
+        
+        df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y))
+        
         scale_percent = 200 # percent of original size
         width = int(box_img.shape[1] * scale_percent / 100)
         height = int(box_img.shape[0] * scale_percent / 100)
@@ -494,14 +567,23 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     #    ax = fig3.add_subplot(3,1,bn+1)
     #    ax.axis('off')
     #    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    
+        #Drawing rectangle on original Image
+        df_l['line_status'] = list(df['line_status']) 
+        df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
+          c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
+        #print(df_l)
+
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
-        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-        fname = os.path.join('output','image%d.jpg' %(bn+1))
-        plt.imsave(fname,cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+        plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+        fname = os.path.join('output1','image%d.jpg' %(bn+1))
+        plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+        del df
+        del df_l
     
     return 1
 #%%
-checker(image_path = 'data/image_5.jpg')
-
+checker('data/image_5.jpg', 12,9,1,4)
+#checker(image_path = "C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
