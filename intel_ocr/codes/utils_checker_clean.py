@@ -16,8 +16,6 @@ import os
 from scipy import ndimage
 import math
 import keras
-import ast
-import operator as op
 
 #Global Variable
 dict_clean_img = {} #BINARY IMAGE DICTIONAY
@@ -25,72 +23,6 @@ dict_img = {} #ORIGINAL IMAGE DICTIONARY
 
 #Keras support channel first (1,28,28) only
 keras.backend.set_image_data_format("channels_first")
-
-#loading models
-try:
-    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
-except:
-    print('Model couldnot be loaded')
-
-def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
-    # initialize the dimensions of the image to be resized and
-    # grab the image size
-    dim = None
-    (h, w) = image.shape[:2]
-
-    # if both the width and height are None, then return the
-    # original image
-    if width is None and height is None:
-        return image
-
-    # check to see if the width is None
-    if width is None:
-        # calculate the ratio of the height and construct the
-        # dimensions
-        r = height / float(h)
-        dim = (int(w * r), height)
-
-    # otherwise, the height is None
-    else:
-        # calculate the ratio of the width and construct the
-        # dimensions
-        r = width / float(w)
-        dim = (width, int(h * r))
-
-    # resize the image
-    resized = cv2.resize(image, dim, interpolation = inter)
-
-    # return the resized image
-    return resized
-
-'''
-Evaluatore new
-'''
-# supported operators
-operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
-             ast.Div: op.truediv, ast.Pow: op.pow, ast.BitXor: op.xor,
-             ast.USub: op.neg}
-
-def eval_expr(expr):
-    """
-    >>> eval_expr('2^6')
-    4
-    >>> eval_expr('2**6')
-    64
-    >>> eval_expr('1 + 2*3**(4^5) / (6 + -7)')
-    -5.0
-    """
-    return eval_(ast.parse(expr, mode='eval').body)
-
-def eval_(node):
-    if isinstance(node, ast.Num): # <number>
-        return node.n
-    elif isinstance(node, ast.BinOp): # <left> <operator> <right>
-        return operators[type(node.op)](eval_(node.left), eval_(node.right))
-    elif isinstance(node, ast.UnaryOp): # <operator> <operand> e.g., -1
-        return operators[type(node.op)](eval_(node.operand))
-    else:
-        raise TypeError(node)
 
 '''
 Workspace Detection
@@ -220,7 +152,7 @@ def predict(img,x1,y1,x2,y2,model):
     # Prediction
     classes = model.predict(gray, batch_size=2)
     index = np.argmax(classes[0])  
-    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
+    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','*(',')']
 
 #    print(c[index])
     return c[index]
@@ -319,7 +251,7 @@ def find_good_contours_thres(conts, alpha = 0.002):
     
     return thres
 
-def extract_line(image, beta=0.7, show = True):
+def extract_line(image, beta=0.8, show = True):
     '''
     Function to extracts the line from the image   
     Assumption : Sufficient gap b/w lines
@@ -334,8 +266,8 @@ def extract_line(image, beta=0.7, show = True):
     '''
     img = image.copy()
     H,W = img.shape[:2]
-    h5 = int(.02 * H)
-    w5 = int(.02 * W)
+    h5 = int(.05 * H)
+    w5 = int(.05 * W)
     img[:h5,:] = [255,255,255]
     img[-h5:,:] = [255,255,255]
     img[:,:w5] = [255,255,255]
@@ -380,7 +312,7 @@ def extract_line(image, beta=0.7, show = True):
     #Getting back the cleaned original image without noise
     cleaned_orig = cv2.erode(cleaned_img, kernel, iterations=1) 
     
-    ##find and draw the upper and lower boundary of each lines
+    ## (5) find and draw the upper and lower boundary of each lines
     hist = cv2.reduce(dil_cleaned_img,1, cv2.REDUCE_AVG).reshape(-1)
     
     th = 1
@@ -394,21 +326,18 @@ def extract_line(image, beta=0.7, show = True):
     uppers = uppers[diff_index_1]
     lowers = lowers[diff_index_1]
     
-    #Extending uppers and lowers indexes to avoid cutting of chars
     uppers[1:] = [i-int(j)/3 for i,j in zip(uppers[1:], diff_1[1:])]
     lowers[:-1] = [i+int(j)/4 for i,j in zip(lowers[:-1], diff_1[:-1])]
     
     diff_2 = np.array([j-i for i,j in zip(uppers,lowers)])
     diff_index_2 = np.array([True]*len(uppers))
     
-    #Combining rogue exponentials into their deserving lines
     for i,diff in enumerate(diff_2):
         if(i>0):
-            if( (diff_2[i-1] < (diff/2)) and (( lowers[i-1]-uppers[i]) > ((lowers[i-1]-uppers[i-1])/4)) ):
+            if( (diff_2[i-1] < (diff/2)) and (( lowers[i-1]-uppers[i]) > ((lowers[i-1]-uppers[i-1])/3)) ):
                 uppers[i] = uppers[i-1]
                 diff_2[i] = diff_2[i]+diff_2[i-1]
                 diff_index_2[i-1] = False
-                #print('Merging')
 
     diff_index = diff_index_2
                 
@@ -478,20 +407,15 @@ def evaluate(df,A,B,X,Y):
         Boolean T/F
     '''
     #Evaluating Expression
-    actual = A**X+B*Y
+    actual = eval("(A*X*X)+(B*Y)")
     
     
     try:#If BODMAS is correct and Mathematically equation is correct
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
-        #print("pred ",pred)
-        ans = eval_expr(pred)
-        
-        if(ans == actual):
-            val='Correct'
-        else:
-            val='Wrong'
-        #print(ans, actual, val)
+        print("pred ",pred)
+        ans = eval(pred)
+        print(ans, actual)
     except Exception as e:
         print(e)
         return False
@@ -574,112 +498,131 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     return [box_num,line_name,df_char]
-
-def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
+#%%
+#def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     '''
     argument:
         image_path (string): image path
         A, B, X, Y (int)    : coefficients
-    '''
-    #reading image
-    img_i = cv2.imread(image_path)
-    img = image_resize(img_i, height = 4676, width = 3307) 
-    #Workspaces Detection
-    workspaces = extract_box(img, show=False)
-    
-    if(len(workspaces) != 3):
-        print('Invalid worksheet image passed')
-        return -1
-    #Defining dataframe for storing infos about every line detected
-    df_lines = pd.DataFrame()
-    
-    for r,rect in enumerate(workspaces):
-        #Cropping boxes for sending to line detection module
-        box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
-        H,W = box.shape[:2]
-        #Extracting lines present in the boxes
-        cleaned_orig,y1s,y2s = extract_line(box, show=False)
-        x1s = [0]*len(y1s)
-        x2s = [W]*len(y1s)
-        
-        df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
-        df.columns = ['y1','y2','x1','x2']
-        df['box_num'] = r
+    '''    
+#loading models
+try:
+    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+except:
+    print('Model couldnot be loaded')
+    return -1
+#reading image
+img = cv2.imread(image_path)
+#Workspaces Detection
+workspaces = extract_box(img)
 
-        df_lines= pd.concat([df_lines, df])
+if(len(workspaces) != 3):
+    print('Invalid worksheet image passed')
+    return -1
+#Defining dataframe for storing infos about every line detected
+df_lines = pd.DataFrame()
+
+for r,rect in enumerate(workspaces):
+    #Cropping boxes for sending to line detection module
+    box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
+    H,W = box.shape[:2]
+    #Extracting lines present in the boxes
+    cleaned_orig,y1s,y2s = extract_line(box, show=True)
+    x1s = [0]*len(y1s)
+    x2s = [W]*len(y1s)
     
-        dict_clean_img.update({r:cleaned_orig})
-        dict_img.update({r:box})
-        
-        #print(df)
+    if(len(y1s)-len(y2s) == 0):
+        print('Lines in workspace-%d : %d' %(r, len(y1s)))
     
-    df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
-            for i in range(len(df_lines))]
+    df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
+    df.columns = ['y1','y2','x1','x2']
+    df['box_num'] = r
+
+    df_lines= pd.concat([df_lines, df])
+
+    dict_clean_img.update({r:cleaned_orig})
+    dict_img.update({r:box})
     
-    #df_chars contains locations of all characters along with box_num and line name
-    list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=False), axis=1))
+    #print(df)
+
+df_lines['line_name'] = ['%d%d' %(df_lines.box_num.iloc[i],df_lines.index[i]) \
+        for i in range(len(df_lines))]
+
+#df_chars contains locations of all characters along with box_num and line name
+list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
+             row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=False), axis=1))
+
+df_chars = pd.DataFrame(list_chars)
+df_chars.columns = ['box_num', 'line_name', 'char_df']
+
+#Plotting detected Characters
+
+box_nums = df_chars.box_num.unique()
+#fig3 = plt.figure(figsize=(7,9))
+#fig3.suptitle('Characters Segmented')
+
+char_area_list = []
+df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
+
+#Area based threshold for detecting and removing noises
+gamma = 0
+max_ar = max([max(i) for i in char_area_list])
+ar_thresh = max_ar*gamma
+
+#Keeping only those characters whose area of contours is above area threshold
+df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
+
+for bn in box_nums:
+    box_img = dict_clean_img[bn] #For Processing B/W image
+    box_img_1 = dict_img[bn] #For saving results
+    box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
     
-    df_chars = pd.DataFrame(list_chars)
-    df_chars.columns = ['box_num', 'line_name', 'char_df']
+    df = df_chars[df_chars.box_num == bn].copy()
+    df_l = df_lines[df_lines["box_num"]==bn].copy() #Defining dF with line info
     
-    #Plotting detected Characters
+    df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, \
+      (c['X1'],c['Y1']),(c['X2'], c['Y2']),(255*(c['exp']==1),180,0),2+(2*c['exp'])), axis=1 ) )
     
-    box_nums = df_chars.box_num.unique()
-    #fig3 = plt.figure(figsize=(7,9))
-    #fig3.suptitle('Characters Segmented')
+    df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y))
     
-    char_area_list = []
-    df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
+    scale_percent = 200 # percent of original size
+    width = int(box_img.shape[1] * scale_percent / 100)
+    height = int(box_img.shape[0] * scale_percent / 100)
+    dim = (width, height)    
+    box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
+#    ax = fig3.add_subplot(3,1,bn+1)
+#    ax.axis('off')
+#    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+
+    #Drawing rectangle on original Image
+    df_l['line_status'] = list(df['line_status']) 
+    df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
+      c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
+    #print(df_l)
+
+    plt.figure(figsize=(13,7))
+    plt.title('Box - %d' %(bn+1) )
+    plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+    fname = os.path.join('output','image%d.jpg' %(bn+1))
+    plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+    del df
+    del df_l
     
-    #Area based threshold for detecting and removing noises
-    gamma = 0
-    max_ar = max([max(i) for i in char_area_list])
-    ar_thresh = max_ar*gamma
-    
-    #Keeping only those characters whose area of contours is above area threshold
-    df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
-    
-    for bn in box_nums:
-        print('BOX %d' %(bn+1))
-        box_img = dict_clean_img[bn] #For Processing B/W image
-        box_img_1 = dict_img[bn] #For saving results
-        box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
-        
-        df = df_chars[df_chars.box_num == bn].copy()
-        df_l = df_lines[df_lines["box_num"]==bn].copy() #Defining dF with line info
-        
-        df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, \
-          (c['X1'],c['Y1']),(c['X2'], c['Y2']),(255*(c['exp']==1),180,0),2+(2*c['exp'])), axis=1 ) )
-        
-        df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y))
-        
-        scale_percent = 200 # percent of original size
-        width = int(box_img.shape[1] * scale_percent / 100)
-        height = int(box_img.shape[0] * scale_percent / 100)
-        dim = (width, height)    
-        box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
-    #    ax = fig3.add_subplot(3,1,bn+1)
-    #    ax.axis('off')
-    #    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-    
-        #Drawing rectangle on original Image
-        df_l['line_status'] = list(df['line_status']) 
-        df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
-          c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
-        #print(df_l)
-        
-#        plt.figure(figsize=(13,7))
-#        plt.title('Box - %d' %(bn+1) )
-#        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-        fname = os.path.join('output','image%d.jpg' %(bn+1))
-        plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
-        del df
-        del df_l
-    
-    return 1
+#    return 1
 #%%
-#checker('data/image_8.jpg', 2,2,98,3)
+checker('data/image_7.jpg', 56,7,3,13)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
-
+#import random
+#l1 = [1,5,8,91,54,2,78,12,1,5]
+#l2 = [7,4,56,12,2,1,67,8,9,0,1]
+#l3 = [9,23,42,98,12,23,54,67,2]
+#l4 = [2,3,4,5,6,1,67,8,9,2,4]
+#
+#for i in range(10):
+#    a = random.choice(l1)
+#    b = random.choice(l2)
+#    x = random.choice(l4)
+#    y = random.choice(l3)
+#    
+#    print(i,'-',a,b,x,y,'|',a*(x**2),b*y)
