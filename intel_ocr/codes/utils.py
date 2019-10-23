@@ -24,6 +24,43 @@ dict_img = {} #ORIGINAL IMAGE DICTIONARY
 #Keras support channel first (1,28,28) only
 keras.backend.set_image_data_format("channels_first")
 
+#loading models
+try:
+    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+except:
+    print('Model couldnot be loaded')
+
+def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
+    # initialize the dimensions of the image to be resized and
+    # grab the image size
+    dim = None
+    (h, w) = image.shape[:2]
+
+    # if both the width and height are None, then return the
+    # original image
+    if width is None and height is None:
+        return image
+
+    # check to see if the width is None
+    if width is None:
+        # calculate the ratio of the height and construct the
+        # dimensions
+        r = height / float(h)
+        dim = (int(w * r), height)
+
+    # otherwise, the height is None
+    else:
+        # calculate the ratio of the width and construct the
+        # dimensions
+        r = width / float(w)
+        dim = (width, int(h * r))
+
+    # resize the image
+    resized = cv2.resize(image, dim, interpolation = inter)
+
+    # return the resized image
+    return resized
+
 '''
 Workspace Detection
 '''
@@ -251,7 +288,7 @@ def find_good_contours_thres(conts, alpha = 0.002):
     
     return thres
 
-def extract_line(image, beta=0.8, show = True):
+def extract_line(image, beta=0.7, show = True):
     '''
     Function to extracts the line from the image   
     Assumption : Sufficient gap b/w lines
@@ -266,8 +303,8 @@ def extract_line(image, beta=0.8, show = True):
     '''
     img = image.copy()
     H,W = img.shape[:2]
-    h5 = int(.05 * H)
-    w5 = int(.05 * W)
+    h5 = int(.02 * H)
+    w5 = int(.02 * W)
     img[:h5,:] = [255,255,255]
     img[-h5:,:] = [255,255,255]
     img[:,:w5] = [255,255,255]
@@ -306,12 +343,13 @@ def extract_line(image, beta=0.8, show = True):
     
     #Dilating the cleaned image for better detection of line in cases where
     #exponents are little up then line
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
     dil_cleaned_img = cv2.dilate(cleaned_img,kernel,iterations = 5)
     
     #Getting back the cleaned original image without noise
     cleaned_orig = cv2.erode(cleaned_img, kernel, iterations=1) 
     
-    ## (5) find and draw the upper and lower boundary of each lines
+    ##find and draw the upper and lower boundary of each lines
     hist = cv2.reduce(dil_cleaned_img,1, cv2.REDUCE_AVG).reshape(-1)
     
     th = 1
@@ -319,19 +357,37 @@ def extract_line(image, beta=0.8, show = True):
     uppers = np.array([y for y in range(H-1) if hist[y]<=th and hist[y+1]>th])
     lowers = np.array([y for y in range(H-1) if hist[y]>th and hist[y+1]<=th])
     
-    diff = np.array([j-i for i,j in zip(uppers,lowers)])
-    diff_index = np.array([True if j > beta*(np.mean(diff)-np.std(diff)) else False for j in diff ])
+    diff_1 = np.array([j-i for i,j in zip(uppers,lowers)])
+    diff_index_1 = np.array([True if j > beta*(np.mean(diff_1)-np.std(diff_1)) else False for j in diff_1 ])
     
-    uppers[1:] = [i-int(j)/3 for i,j in zip(uppers[1:], diff[1:])]
-    lowers[:-1] = [i+int(j)/4 for i,j in zip(lowers[:-1], diff[:-1])]
+    uppers = uppers[diff_index_1]
+    lowers = lowers[diff_index_1]
+    
+    #Extending uppers and lowers indexes to avoid cutting of chars
+    uppers[1:] = [i-int(j)/3 for i,j in zip(uppers[1:], diff_1[1:])]
+    lowers[:-1] = [i+int(j)/4 for i,j in zip(lowers[:-1], diff_1[:-1])]
+    
+    diff_2 = np.array([j-i for i,j in zip(uppers,lowers)])
+    diff_index_2 = np.array([True]*len(uppers))
+    
+    #Combining rogue exponentials into their deserving lines
+    for i,diff in enumerate(diff_2):
+        if(i>0):
+            if( (diff_2[i-1] < (diff/2)) and (( lowers[i-1]-uppers[i]) > ((lowers[i-1]-uppers[i-1])/4)) ):
+                uppers[i] = uppers[i-1]
+                diff_2[i] = diff_2[i]+diff_2[i-1]
+                diff_index_2[i-1] = False
+                print('Merging')
 
+    diff_index = diff_index_2
+                
     cleaned_orig_rec = cv2.cvtColor(cleaned_orig, cv2.COLOR_GRAY2BGR)
     
     #For changing color of intermediate lines, keeping count
     col_ct = 0
     
     for left,right in zip(uppers[diff_index], lowers[diff_index]):
-        print(left,right)
+        #print(left,right)
         col1 = (153,255,255)
         col2 = (255,255,153)
         if(col_ct % 2 == 0):
@@ -399,7 +455,12 @@ def evaluate(df,A,B,X,Y):
         pred = "".join(list(pred+df["pred"]))
         print("pred ",pred)
         ans = eval(pred)
-        print(ans, actual)
+        
+        if(ans == actual):
+            val='Correct'
+        else:
+            val='Wrong'
+        print(ans, actual, val)
     except Exception as e:
         print(e)
         return False
@@ -488,15 +549,10 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     argument:
         image_path (string): image path
         A, B, X, Y (int)    : coefficients
-    '''    
-    #loading models
-    try:
-        model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
-    except:
-        print('Model couldnot be loaded')
-        return -1
+    '''
     #reading image
-    img = cv2.imread(image_path)
+    img_i = cv2.imread(image_path)
+    img = image_resize(img_i, height = 4676, width = 3307) 
     #Workspaces Detection
     workspaces = extract_box(img)
     
@@ -557,6 +613,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
     
     for bn in box_nums:
+        print('BOX %d' %(bn+1))
         box_img = dict_clean_img[bn] #For Processing B/W image
         box_img_1 = dict_img[bn] #For saving results
         box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
@@ -583,7 +640,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
           c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
         #print(df_l)
-
+        
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
         plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
@@ -594,6 +651,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-checker('data/image_7.jpg', 56,7,3,13)
+checker('data/image400_22.jpg', 2,2,98,3)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
+
