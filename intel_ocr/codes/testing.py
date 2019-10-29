@@ -685,68 +685,80 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
         del df_l
+    plt.close('all')
+    return df_chars
+
+def analysis(image_path, df_chars):
     
-    return 1
-#%%
-checker('data/image_24.jpg', 1,1,12,3)
-#%%
-def analysis(data_dir):
+    data_dir = image_path.split('.jpg')[0]+'.h5'
+    df_res = pd.DataFrame()
+
+    for i in range(len(df_chars)):
+        df = df_chars.iloc[i,2]
+        df_res = pd.concat([df_res,df[['box_num','line_name','pred','exp']]], ignore_index=True)
     
+    df_orig = pd.read_hdf(data_dir)    
+    
+    ##Line Detection Accuracy
+    df_res['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                                                      str(row['line_name']), axis=1)
+    
+    df_orig['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                                                      str(row['line_name']), axis=1)
+    
+    
+    arr_orig = df_orig['bo_ln'].unique()
+    arr_res = df_res['bo_ln'].unique()
+    
+    tp_l = len(arr_orig[np.array([item in arr_res for item in arr_orig])])
+    fp_l = len(arr_res) - len(arr_res[np.array([item in arr_orig for item in arr_res])])
+    
+    acc_line = (tp_l+fp_l)/len(df_orig['bo_ln'].unique()) * 100
+    
+    ##Character Detection Accuracy
+    df_res['bo_ln_ch'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['pred']), axis=1)
+    
+    df_orig['bo_ln_ch'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['char']), axis=1)
+    
+    tp_c = len(df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch']))
+    fp_c = len(df_res['bo_ln_ch']) - len(df_res['bo_ln_ch'].isin(df_orig['bo_ln_ch']))
+    acc_char = (tp_c+fp_c)/len(df_orig) * 100
+    
+    
+    ## Exponent Detection Acuuracy
+    df_res_exp = df_res[df_res['exp'] == 1].copy()
+    df_orig_exp = df_orig[df_orig['exp'] == 1].copy()
+    
+    df_res_exp['ch_exp'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['pred'])+'-'+str(row['exp']), axis=1)
+    
+    df_orig_exp['ch_exp'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['char'])+'-'+str(row['exp']), axis=1)
+    
+    tp_e = len(df_orig_exp['ch_exp'].isin(df_res_exp['ch_exp']))
+    fp_e = len(df_res_exp) - len(df_res_exp['ch_exp'].isin(df_orig_exp['ch_exp']))
+    
+    acc_exp = (tp_e+fp_e)/len(df_orig_exp)*100
+    
+    return [acc_line, acc_char, acc_exp]
 
-df_res = pd.DataFrame()
-
-for i in range(len(df_chars)):
-    df = df_chars.iloc[i,2]
-    df_res = pd.concat([df_res,df[['box_num','line_name','pred','exp']]], ignore_index=True)
-
-df_orig = pd.read_hdf('data/image_24.h5')    
 #%%
-##Line Detection Accuracy
+image_names =['data/image_24.jpg',
+              'data/image_1.jpg']
 
-df_res['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
-                                                  str(row['line_name']), axis=1)
+df_all = pd.DataFrame()
 
-df_orig['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
-                                                  str(row['line_name']), axis=1)
+for image in image_names:
+    image_path = image
+    image_name = image.split('/')[1].split('.jpg')[0]
+    df_chars = checker(image_path, 1,1,12,3)
+    df_tmp = pd.DataFrame([image_name, analysis(image_path, df_chars)])
+    df_all = pd.concat([df_all, df_tmp], axis = 0)
 
 
-arr_orig = df_orig['bo_ln'].unique()
-arr_res = df_res['bo_ln'].unique()
+df_all.columns = ['image_name', 'line_det', 'char_det', 'exp_det']
 
-tp_l = len(arr_orig[np.array([item in arr_res for item in arr_orig])])
-fp_l = len(arr_res) - len(arr_res[np.array([item in arr_orig for item in arr_res])])
-
-acc_line = (tp_l+fp_l)/len(df_orig) * 100
+df_all
 #%%
-##Character Detection Accuracy
-
-df_res['bo_ln_ch'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
-                      str(row['line_name'])+'-'+str(row['pred']), axis=1)
-
-df_orig['bo_ln_ch'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
-                      str(row['line_name'])+'-'+str(row['char']), axis=1)
-
-tp_c = len(df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch']))
-
-acc_char = tp_c/len(df)
-
-#%%
-## Exponent Detection Acuuracy
-
-df_res_exp = df_res[df_res['exp'] == 1].copy()
-df_orig_exp = df_orig[df_orig['exp'] == 1].copy()
-
-df_res_exp['ch_exp'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
-                      str(row['line_name'])+'-'+str(row['pred'])+'-'+str(row['exp']), axis=1)
-
-df_orig_exp['ch_exp'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
-                      str(row['line_name'])+'-'+str(row['char'])+'-'+str(row['exp']), axis=1)
-
-tp_e = len(df_orig_exp['ch_exp'].isin(df_res_exp['ch_exp']))
-fp_e = len(df_res_exp) - len(df_res_exp['ch_exp'].isin(df_orig_exp['ch_exp']))
-
-acc_char = (tp_e+fp_e)/len(df_orig_exp)
-#%%
-a = np.array([1,2,3,5])
-b = np.array([1,4,5,3,6,7])
-np.array([item in a for item in b])
