@@ -682,7 +682,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-checker('data/image_9.jpg', 2,2,98,3)
+checker('data/image_8.jpg', 5,1,42,4)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
 
