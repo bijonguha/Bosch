@@ -494,7 +494,7 @@ def evaluate(df,A,B,X,Y):
         print(ans, actual, val)
     except Exception as e:
         print(e)
-        return False
+        return 5
     
     return actual==ans
 
@@ -669,12 +669,12 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         #Drawing rectangle on original Image
         df_l['line_status'] = list(df['line_status']) 
         df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
-          c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
+          c['y2']),(255*(c['line_status']==5),255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
         #print(df_l)
         
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
-        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+        plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         fname = os.path.join('output','image%d.jpg' %(bn+1))
         plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
@@ -682,7 +682,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-checker('data/image_8.jpg', 5,1,42,4)
+checker('data/image_20.jpg', 2,4,5,8)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
 
