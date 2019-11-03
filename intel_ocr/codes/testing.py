@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import os
 from scipy import ndimage
 import math
 import keras
@@ -28,7 +27,7 @@ keras.backend.set_image_data_format("channels_first")
 
 #loading models
 try:
-    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+    model = keras.models.load_model('models/DCNN_10AD_sy.h5')
 except:
     print('Model couldnot be loaded')
 
@@ -768,14 +767,29 @@ def analysis(image_path, df_chars):
 #%%
 image_names =[ 'data/image_1.jpg',
               'data/image_2.jpg',
+              #'data/image_3.jpg', #bracket issue
               'data/image_4.jpg',
+              #'data/image_5.jpg', #bracket issue
               'data/image_6.jpg',
+              #'data/image_7.jpg', #invalid image
               'data/image_8.jpg',
               'data/image_9.jpg',
               'data/image_10.jpg',
               'data/image_11.jpg',
+              #'data/image_12.jpg', #duplicate
               'data/image_13.jpg',
-              'data/image_24.jpg']
+              'data/image_14.jpg',
+              'data/image_15.jpg',
+              'data/image_16.jpg',
+              #'data/image_17.jpg', #bracket issue
+              #'data/image_18.jpg', #Workspace not detected
+              'data/image_19.jpg',
+              'data/image_20.jpg',
+              'data/image_21.jpg',
+              'data/image_22.jpg',
+              #'data/image_23.jpg', #bracket issue
+              'data/image_24.jpg',
+              'data/image_25.jpg',]
 
 df_all = pd.DataFrame()
 

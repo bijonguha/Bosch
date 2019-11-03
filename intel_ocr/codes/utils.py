@@ -28,7 +28,7 @@ keras.backend.set_image_data_format("channels_first")
 
 #loading models
 try:
-    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+    model = keras.models.load_model('models/DCNN_10AD_sy.h5')
 except:
     print('Model couldnot be loaded')
 
