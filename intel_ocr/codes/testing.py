@@ -793,16 +793,20 @@ image_names =[ 'data/image_1.jpg',
 
 df_all = pd.DataFrame()
 
+import time
+t_list = []
+
 for image in image_names:
     print(image)
+    start = time.time()
     image_path = image
     image_name = image.split('/')[1].split('.jpg')[0]
     df_chars = checker(image_path, 1,1,12,3)
-    df_tmp = pd.DataFrame([[image_name]+analysis(image_path, df_chars)])
+    df_tmp = pd.DataFrame([[image_name]+analysis(image_path, df_chars)+[time.time() - start]])
     df_all = pd.concat([df_all, df_tmp], axis = 0)
+    t_list.append([time.time() - start])
 
-
-df_all.columns = ['image_name', 'line_det', 'char_det', 'exp_det', 'Color_prediction']
+df_all.columns = ['image_name', 'line_det', 'char_det', 'exp_det', 'Color_prediction', 'run_time']
 
 df_all.describe()
 #%%

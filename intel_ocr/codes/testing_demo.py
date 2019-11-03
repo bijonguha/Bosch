@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import os
 from scipy import ndimage
 import math
 import keras
@@ -284,18 +283,7 @@ def extract_box(img, show=True):
     #finding out locations of rectangle
     for cnt in workspace_contours:
         x,y,w,h = cv2.boundingRect(cnt)
-        rectangle_locs.append([x,y,w,h])        
-    
-    if (show):
-        fig = plt.figure(figsize=(7,9))
-        fig.suptitle('Extracted Workspaces')
-        i=1
-        l = len(rectangle_locs)
-        for rect in rectangle_locs:
-            ax = fig.add_subplot(l,1,i)
-            ax.imshow(img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]])
-            i = i+1
-        plt.show()
+        rectangle_locs.append([x,y,w,h])
         
     return rectangle_locs
 
@@ -408,7 +396,7 @@ def extract_line(image, beta=0.7, show = True):
                 uppers[i] = uppers[i-1]
                 diff_2[i] = diff_2[i]+diff_2[i-1]
                 diff_index_2[i-1] = False
-                print('Merging')
+                #print('Merging')
 
     diff_index = diff_index_2
                 
@@ -470,7 +458,7 @@ def extract_line(image, beta=0.7, show = True):
 #box_num=0
 #dict_clean = dict_clean_img
 
-def evaluate(df,A,B,X,Y):
+def evaluate(df,A,B,X,Y, ret = True):
     '''Function to evaluate mathematical equation and give bool output
     Input: Dataframe
            Values
@@ -484,20 +472,22 @@ def evaluate(df,A,B,X,Y):
     try:#If BODMAS is correct and Mathematically equation is correct
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
-        print("pred ",pred)
+        #print("pred ",pred)
         ans = eval_expr(pred)
         
         if(ans == actual):
             val='Correct'
         else:
             val='Wrong'
-        print(ans, actual, val)
+        #print(ans, actual, val)
     except Exception as e:
         print(e)
-        return 5
+        return False
     
-    return actual==ans
-
+    if(ret == True):
+        return actual==ans
+    else:
+        return ans
 
 def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
     '''
@@ -582,10 +572,13 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         A, B, X, Y (int)    : coefficients
     '''
     #reading image
+    #image_path = 'data/image_24.jpg'
+    #A=B=X=Y=-1
     img_i = cv2.imread(image_path)
     img = image_resize(img_i, height = 4676, width = 3307) 
+    
     #Workspaces Detection
-    workspaces = extract_box(img)
+    workspaces = extract_box(img, show=False)
     
     if(len(workspaces) != 3):
         print('Invalid worksheet image passed')
@@ -602,13 +595,13 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         x1s = [0]*len(y1s)
         x2s = [W]*len(y1s)
         
-        if(len(y1s)-len(y2s) == 0):
-            print('Lines in workspace-%d : %d' %(r, len(y1s)))
+#        if(len(y1s)-len(y2s) == 0):
+#            print('Lines in workspace-%d : %d' %(r, len(y1s)))
         
         df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
         df.columns = ['y1','y2','x1','x2']
         df['box_num'] = r
-
+    
         df_lines= pd.concat([df_lines, df])
     
         dict_clean_img.update({r:cleaned_orig})
@@ -625,7 +618,8 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     df_chars = pd.DataFrame(list_chars)
     df_chars.columns = ['box_num', 'line_name', 'char_df']
-    
+    df_chars['line_val'] = np.nan
+        
     #Plotting detected Characters
     
     box_nums = df_chars.box_num.unique()
@@ -644,7 +638,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
     
     for bn in box_nums:
-        print('BOX %d' %(bn+1))
+        #print('BOX %d' %(bn+1))
         box_img = dict_clean_img[bn] #For Processing B/W image
         box_img_1 = dict_img[bn] #For saving results
         box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
@@ -656,6 +650,9 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
           (c['X1'],c['Y1']),(c['X2'], c['Y2']),(255*(c['exp']==1),180,0),2+(2*c['exp'])), axis=1 ) )
         
         df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y))
+        
+        df['line_val'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y, ret=False))
+        df_chars['line_val'][df_chars.box_num == bn] = df['line_val']
         
         scale_percent = 200 # percent of original size
         width = int(box_img.shape[1] * scale_percent / 100)
@@ -669,23 +666,102 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         #Drawing rectangle on original Image
         df_l['line_status'] = list(df['line_status']) 
         df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
-          c['y2']),(255*(c['line_status']==5),255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
+          c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
         #print(df_l)
         
-        plt.figure(figsize=(13,7))
-        plt.title('Box - %d' %(bn+1) )
-        plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
-        fname = os.path.join('output','image%d.jpg' %(bn+1))
-        plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+#        plt.figure(figsize=(13,7))
+#        plt.title('Box - %d' %(bn+1) )
+#        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+#        plt.figure(figsize=(13,7))
+#        plt.title('Box - %d' %(bn+1) )
+#        plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+#        fname = os.path.join('output','image%d.jpg' %(bn+1))
+#        plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
         del df_l
+#    plt.close('all')
+    return df_chars
+
+def analysis(image_path, df_chars):
     
-    return 1
-#%%
-import time
-start = time.time()
-checker('data/image_20.jpg', 2,4,5,8)
-print(time.time()-start)
-#checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
-#%%
+    data_dir = image_path.split('.jpg')[0]+'.h5'
+    df_res = pd.DataFrame()
+
+    for i in range(len(df_chars)):
+        df = df_chars.iloc[i,2]
+        df['line_val'] = df_chars.iloc[i,3]
+        df_res = pd.concat([df_res,df[['box_num','line_name','pred','exp','line_val']]], ignore_index=True)
+    
+    df_orig = pd.read_hdf(data_dir)    
+    
+    ##Line Detection Accuracy
+    df_res['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                                                      str(row['line_name']), axis=1)
+    
+    df_orig['bo_ln'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
+                                                      str(row['line_name']), axis=1)
+    
+    
+    arr_orig = df_orig['bo_ln'].unique()
+    arr_res = df_res['bo_ln'].unique()
+ 
+#    tp_l = len(arr_orig[np.array([item in arr_res for item in arr_orig])])
+#    fp_l = len(arr_res) - len(arr_res[np.array([item in arr_orig for item in arr_res])])
+#    fn_l = len(arr_orig[~np.array([item in arr_res for item in arr_orig])])
+    
+    diff_line = np.setdiff1d(arr_orig, arr_res)
+    acc_line = (1 - (len(diff_line)/len(arr_orig))) * 100
+    
+    ##Character Detection Accuracy
+    df_res['bo_ln_ch'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['pred']), axis=1)
+    
+    df_orig['bo_ln_ch'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['char']), axis=1)
+    
+#    tp_c = len(df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch']))
+#    fp_c = len(df_res['bo_ln_ch']) - len(df_res['bo_ln_ch'].isin(df_orig['bo_ln_ch']))
+#    fn_c = len(df_orig[~df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch'])])
+    
+    diff_char = np.setdiff1d(df_orig['bo_ln_ch'].values, df_res['bo_ln_ch'].values)
+    acc_char =  (1 - (len(diff_char)/len(df_orig['bo_ln_ch'])))* 100
+    
+    
+    ## Exponent Detection Acuuracy
+    df_res_exp = df_res[df_res['exp'] == 1].copy()
+    df_orig_exp = df_orig[df_orig['exp'] == 1].copy()
+    
+    df_res_exp['ch_exp'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['pred'])+'-'+str(row['exp']), axis=1)
+    
+    df_orig_exp['ch_exp'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(row['char'])+'-'+str(row['exp']), axis=1)
+    
+#    tp_e = len(df_orig_exp['ch_exp'].isin(df_res_exp['ch_exp']))
+#    fp_e = len(df_res_exp) - len(df_res_exp['ch_exp'].isin(df_orig_exp['ch_exp']))
+#    fn_e = len(df_orig_exp[~df_orig_exp['ch_exp'].isin(df_res_exp['ch_exp'])])
+    
+    diff_exp = np.setdiff1d(df_orig_exp['ch_exp'].values, df_res_exp['ch_exp'].values)
+    acc_exp = (1 - (len(diff_exp)/len(df_orig_exp['ch_exp'])))*100
+    
+    ## Final line color analysis
+    df_res['bo_ln_val'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(int(row['line_val'])), axis=1)
+    
+    df_orig['bo_ln_val'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
+                          str(row['line_name'])+'-'+str(int(row['line_val'])), axis=1)
+        
+    arr_origV = df_orig['bo_ln_val'].unique()
+    arr_resV = df_res['bo_ln_val'].unique()
+
+#    tp_lv = len(arr_origV[np.array([item in arr_resV for item in arr_origV])])
+#    fp_lv = len(arr_resV) - len(arr_resV[np.array([item in arr_origV for item in arr_resV])])
+#    fn_lv = len(arr_origV[~np.array([item in arr_resV for item in arr_origV])])
+
+    diff_line_val = np.setdiff1d(arr_origV, arr_resV)
+    acc_line_val = (1 - (len(diff_line_val)/len(arr_origV))) * 100
+        
+    
+    return [acc_line, acc_char, acc_exp, acc_line_val]
+
 
