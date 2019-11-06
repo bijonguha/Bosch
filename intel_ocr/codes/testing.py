@@ -834,4 +834,5 @@ for image in image_names:
 df_all.columns = ['image_name', 'line_det', 'char_det', 'exp_det', 'Color_prediction', 'run_time']
 
 df_all.describe()
+
 #%%
