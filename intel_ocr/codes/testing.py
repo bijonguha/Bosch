@@ -18,6 +18,7 @@ import keras
 import ast
 import operator as op
 import re
+import math
 
 #Global Variable
 dict_clean_img = {} #BINARY IMAGE DICTIONAY
@@ -397,7 +398,7 @@ def extract_line(image, beta=0.7, show = True):
                 uppers[i] = uppers[i-1]
                 diff_2[i] = diff_2[i]+diff_2[i-1]
                 diff_index_2[i-1] = False
-                print('Merging')
+                #print('Merging')
 
     diff_index = diff_index_2
                 
@@ -474,20 +475,25 @@ def evaluate(df,A,B,X,Y, ret = True):
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
         #print("pred ",pred)
-        matches_left = re.findall(r'\d\(\d', pred)
-        matches_right = re.findall(r'\d\)\d', pred)
         
-        for s in matches_left:
-            sn = s.split('(')
-            snew = sn[0]+'*('+sn[1]
-            pred = pred.replace(s,snew)    
+        try:
+            ans = eval_expr(pred)
+        
+        except:
+            matches_left = re.findall(r'\d\(\d', pred)
+            matches_right = re.findall(r'\d\)\d', pred)
             
-        for s in matches_right:
-            sn = s.split(')')
-            snew = sn[0]+')*'+sn[1]
-            pred = pred.replace(s,snew) 
-            
-        ans = eval_expr(pred)
+            for s in matches_left:
+                sn = s.split('(')
+                snew = sn[0]+'*('+sn[1]
+                pred = pred.replace(s,snew)
+                
+            for s in matches_right:
+                sn = s.split(')')
+                snew = sn[0]+')*'+sn[1]
+                pred = pred.replace(s,snew) 
+                
+            ans = eval_expr(pred)
         
         if(ans == actual):
             val='Correct'
@@ -693,22 +699,23 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
 #        plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
         del df_l
-#    plt.close('all')
+    plt.close('all')
     return df_chars
-#%%
+
 def analysis(image_path, df_chars):
     
     df_chars = checker(image_path)
     
     data_dir = image_path.split('.jpg')[0]+'.h5'
+    
     df_res = pd.DataFrame()
 
     for i in range(len(df_chars)):
-        df = df_chars.iloc[i,2]
-        df['line_val'] = df_chars.iloc[i,3]
+        df = df_chars.iloc[i,2].copy()
+        df['line_val'] = df_chars.iloc[i,3].copy()
         df_res = pd.concat([df_res,df[['box_num','line_name','pred','exp','line_val']]], ignore_index=True)
     
-    df_orig = pd.read_hdf('data/image_20.h5')    
+    df_orig = pd.read_hdf(data_dir)
     
     ##Line Detection Accuracy
     df_res['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
@@ -739,8 +746,10 @@ def analysis(image_path, df_chars):
 #    fp_c = len(df_res['bo_ln_ch']) - len(df_res['bo_ln_ch'].isin(df_orig['bo_ln_ch']))
 #    fn_c = len(df_orig[~df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch'])])
     
-    diff_char = np.setdiff1d(df_orig['bo_ln_ch'].values, df_res['bo_ln_ch'].values)
-    acc_char =  (1 - (len(diff_char)/len(df_orig['bo_ln_ch'])))* 100
+    diff_char_left = np.setdiff1d(df_orig['bo_ln_ch'].values, df_res['bo_ln_ch'].values)
+    diff_char_right = np.setdiff1d(df_res['bo_ln_ch'].values, df_orig['bo_ln_ch'].values)
+    diff_char = math.ceil((len(diff_char_left)+len(diff_char_right))/2)
+    acc_char =  (1 - (diff_char/len(df_orig['bo_ln_ch'])))* 100
     
     
     ## Exponent Detection Acuuracy
@@ -781,31 +790,31 @@ def analysis(image_path, df_chars):
     return [acc_line, acc_char, acc_exp, acc_line_val]
 
 #%%
-image_names =[# 'data/image_1.jpg',
-#              'data/image_2.jpg',
-#              'data/image_3.jpg', #bracket issue
-#              'data/image_4.jpg',
-#              #'data/image_5.jpg', #bracket issue
-#              'data/image_6.jpg',
-#              #'data/image_7.jpg', #invalid image
-#              'data/image_8.jpg',
-#              'data/image_9.jpg',
-#              'data/image_10.jpg',
-#              'data/image_11.jpg',
-#              #'data/image_12.jpg', #duplicate
-#              'data/image_13.jpg',
-#              'data/image_14.jpg',
-#              'data/image_15.jpg',
-#              'data/image_16.jpg',
-#              #'data/image_17.jpg', #bracket issue
-#              #'data/image_18.jpg', #Workspace not detected
-#              'data/image_19.jpg',
-              'data/image_20.jpg']
-#              'data/image_21.jpg',
-#              'data/image_22.jpg',
-#              #'data/image_23.jpg', #bracket issue
-#              'data/image_24.jpg',
-#              'data/image_25.jpg',]
+image_names =['data/image_1.jpg',
+              'data/image_2.jpg',
+              'data/image_3.jpg', #bracket issue
+              'data/image_4.jpg',
+              'data/image_5.jpg', #bracket issue
+              'data/image_6.jpg',
+              #'data/image_7.jpg', #invalid image
+              'data/image_8.jpg',
+              'data/image_9.jpg',
+              'data/image_10.jpg',
+              'data/image_11.jpg',
+              #'data/image_12.jpg', #duplicate
+              'data/image_13.jpg',
+              'data/image_14.jpg',
+              'data/image_15.jpg',
+              'data/image_16.jpg',
+              'data/image_17.jpg', #bracket issue
+              #'data/image_18.jpg', #Workspace not detected
+              'data/image_19.jpg',
+              'data/image_20.jpg',
+              'data/image_21.jpg',
+              'data/image_22.jpg',
+              'data/image_23.jpg', #bracket issue
+              'data/image_24.jpg',
+              'data/image_25.jpg',]
 
 df_all = pd.DataFrame()
 

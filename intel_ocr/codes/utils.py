@@ -486,21 +486,27 @@ def evaluate(df,A,B,X,Y):
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
         
-        matches_left = re.findall(r'\d\(\d', pred)
-        matches_right = re.findall(r'\d\)\d', pred)
-        
-        for s in matches_left:
-            sn = s.split('(')
-            snew = sn[0]+'*('+sn[1]
-            pred = pred.replace(s,snew)    
+        try:
+            ans = eval_expr(pred)
             
-        for s in matches_right:
-            sn = s.split(')')
-            snew = sn[0]+')*'+sn[1]
-            pred = pred.replace(s,snew) 
+        except:
+            matches_left = re.findall(r'\d\(\d', pred)
+            matches_right = re.findall(r'\d\)\d', pred)
+            
+            for s in matches_left:
+                sn = s.split('(')
+                snew = sn[0]+'*('+sn[1]
+                pred = pred.replace(s,snew)    
+                
+            for s in matches_right:
+                sn = s.split(')')
+                snew = sn[0]+')*'+sn[1]
+                pred = pred.replace(s,snew) 
+            
+            ans = eval_expr(pred)
         
         print("pred ",pred)
-        ans = eval_expr(pred)
+        
         
         if(ans == actual):
             val='Correct'
@@ -637,7 +643,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     #df_chars contains locations of all characters along with box_num and line name
     list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=True), axis=1))
+                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=False), axis=1))
     
     df_chars = pd.DataFrame(list_chars)
     df_chars.columns = ['box_num', 'line_name', 'char_df']
@@ -691,6 +697,8 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         plt.figure(figsize=(13,7))
         plt.title('Box - %d' %(bn+1) )
         plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+        plt.figure()
+        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
         fname = os.path.join('output','image%d.jpg' %(bn+1))
         plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
@@ -700,7 +708,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
 #%%
 import time
 start = time.time()
-checker('data/image_20.jpg', 2,4,5,8)
+checker('data/image_23.jpg', 12,9,1,4)
 print(time.time()-start)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
