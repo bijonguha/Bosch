@@ -18,6 +18,7 @@ import math
 import keras
 import ast
 import operator as op
+import re
 
 #Global Variable
 dict_clean_img = {} #BINARY IMAGE DICTIONAY
@@ -220,7 +221,7 @@ def predict(img,x1,y1,x2,y2,model):
     # Prediction
     classes = model.predict(gray, batch_size=2)
     index = np.argmax(classes[0])  
-    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','*(',')']
+    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
 
 #    print(c[index])
     return c[index]
@@ -484,6 +485,20 @@ def evaluate(df,A,B,X,Y):
     try:#If BODMAS is correct and Mathematically equation is correct
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
+        
+        matches_left = re.findall(r'\d\(\d', pred)
+        matches_right = re.findall(r'\d\)\d', pred)
+        
+        for s in matches_left:
+            sn = s.split('(')
+            snew = sn[0]+'*('+sn[1]
+            pred = pred.replace(s,snew)    
+            
+        for s in matches_right:
+            sn = s.split(')')
+            snew = sn[0]+')*'+sn[1]
+            pred = pred.replace(s,snew) 
+        
         print("pred ",pred)
         ans = eval_expr(pred)
         
@@ -492,6 +507,7 @@ def evaluate(df,A,B,X,Y):
         else:
             val='Wrong'
         print(ans, actual, val)
+        
     except Exception as e:
         print(e)
         return 5
@@ -534,16 +550,16 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
             exp = 0
             if i+1 != len(contours_sorted):
                 x1,y1,w1,h1 = bounding_boxes[i+1]
-                if abs(x-x1) < 20:
-                    
-                    minX = min(x,x1)
-                    minY = min(y,y1)
-                    maxX = max(x+w, x1+w1)
-                    maxY = max(y+h, y1+h1)
-                    x,y,x11,y11 = minX, minY, maxX, maxY
-                    
-                    x,y,w,h = x,y,x11-x,y11-y
-                    i = i+1
+#                if abs(x-x1) < 10:
+#                    
+#                    minX = min(x,x1)
+#                    minY = min(y,y1)
+#                    maxX = max(x+w, x1+w1)
+#                    maxY = max(y+h, y1+h1)
+#                    x,y,x11,y11 = minX, minY, maxX, maxY
+#                    
+#                    x,y,w,h = x,y,x11-x,y11-y
+#                    i = i+1
             
             #char_locs.append([x,y,x+w,y+h])     
             if(h<0.25*L_H and w<0.25*L_H):
@@ -621,7 +637,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     #df_chars contains locations of all characters along with box_num and line name
     list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=False), axis=1))
+                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=True), axis=1))
     
     df_chars = pd.DataFrame(list_chars)
     df_chars.columns = ['box_num', 'line_name', 'char_df']

@@ -17,6 +17,7 @@ import math
 import keras
 import ast
 import operator as op
+import re
 
 #Global Variable
 dict_clean_img = {} #BINARY IMAGE DICTIONAY
@@ -473,6 +474,19 @@ def evaluate(df,A,B,X,Y, ret = True):
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
         #print("pred ",pred)
+        matches_left = re.findall(r'\d\(\d', pred)
+        matches_right = re.findall(r'\d\)\d', pred)
+        
+        for s in matches_left:
+            sn = s.split('(')
+            snew = sn[0]+'*('+sn[1]
+            pred = pred.replace(s,snew)    
+            
+        for s in matches_right:
+            sn = s.split(')')
+            snew = sn[0]+')*'+sn[1]
+            pred = pred.replace(s,snew) 
+            
         ans = eval_expr(pred)
         
         if(ans == actual):
@@ -524,16 +538,16 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
             exp = 0
             if i+1 != len(contours_sorted):
                 x1,y1,w1,h1 = bounding_boxes[i+1]
-                if abs(x-x1) < 20:
-                    
-                    minX = min(x,x1)
-                    minY = min(y,y1)
-                    maxX = max(x+w, x1+w1)
-                    maxY = max(y+h, y1+h1)
-                    x,y,x11,y11 = minX, minY, maxX, maxY
-                    
-                    x,y,w,h = x,y,x11-x,y11-y
-                    i = i+1
+#                if abs(x-x1) < 20:
+#                    
+#                    minX = min(x,x1)
+#                    minY = min(y,y1)
+#                    maxX = max(x+w, x1+w1)
+#                    maxY = max(y+h, y1+h1)
+#                    x,y,x11,y11 = minX, minY, maxX, maxY
+#                    
+#                    x,y,w,h = x,y,x11-x,y11-y
+#                    i = i+1
             
             #char_locs.append([x,y,x+w,y+h])     
             if(h<0.25*L_H and w<0.25*L_H):
@@ -681,8 +695,10 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         del df_l
 #    plt.close('all')
     return df_chars
-
+#%%
 def analysis(image_path, df_chars):
+    
+    df_chars = checker(image_path)
     
     data_dir = image_path.split('.jpg')[0]+'.h5'
     df_res = pd.DataFrame()
@@ -692,7 +708,7 @@ def analysis(image_path, df_chars):
         df['line_val'] = df_chars.iloc[i,3]
         df_res = pd.concat([df_res,df[['box_num','line_name','pred','exp','line_val']]], ignore_index=True)
     
-    df_orig = pd.read_hdf(data_dir)    
+    df_orig = pd.read_hdf('data/image_20.h5')    
     
     ##Line Detection Accuracy
     df_res['bo_ln'] = df_res.apply(lambda row: str(row['box_num'])+'-'+\
@@ -765,31 +781,31 @@ def analysis(image_path, df_chars):
     return [acc_line, acc_char, acc_exp, acc_line_val]
 
 #%%
-image_names =[ 'data/image_1.jpg',
-              'data/image_2.jpg',
-              #'data/image_3.jpg', #bracket issue
-              'data/image_4.jpg',
-              #'data/image_5.jpg', #bracket issue
-              'data/image_6.jpg',
-              #'data/image_7.jpg', #invalid image
-              'data/image_8.jpg',
-              'data/image_9.jpg',
-              'data/image_10.jpg',
-              'data/image_11.jpg',
-              #'data/image_12.jpg', #duplicate
-              'data/image_13.jpg',
-              'data/image_14.jpg',
-              'data/image_15.jpg',
-              'data/image_16.jpg',
-              #'data/image_17.jpg', #bracket issue
-              #'data/image_18.jpg', #Workspace not detected
-              'data/image_19.jpg',
-              'data/image_20.jpg',
-              'data/image_21.jpg',
-              'data/image_22.jpg',
-              #'data/image_23.jpg', #bracket issue
-              'data/image_24.jpg',
-              'data/image_25.jpg',]
+image_names =[# 'data/image_1.jpg',
+#              'data/image_2.jpg',
+#              'data/image_3.jpg', #bracket issue
+#              'data/image_4.jpg',
+#              #'data/image_5.jpg', #bracket issue
+#              'data/image_6.jpg',
+#              #'data/image_7.jpg', #invalid image
+#              'data/image_8.jpg',
+#              'data/image_9.jpg',
+#              'data/image_10.jpg',
+#              'data/image_11.jpg',
+#              #'data/image_12.jpg', #duplicate
+#              'data/image_13.jpg',
+#              'data/image_14.jpg',
+#              'data/image_15.jpg',
+#              'data/image_16.jpg',
+#              #'data/image_17.jpg', #bracket issue
+#              #'data/image_18.jpg', #Workspace not detected
+#              'data/image_19.jpg',
+              'data/image_20.jpg']
+#              'data/image_21.jpg',
+#              'data/image_22.jpg',
+#              #'data/image_23.jpg', #bracket issue
+#              'data/image_24.jpg',
+#              'data/image_25.jpg',]
 
 df_all = pd.DataFrame()
 
