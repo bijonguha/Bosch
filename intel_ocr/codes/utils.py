@@ -726,7 +726,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-path = 'data/image_20.jpg'
+path = 'data/image_5.jpg'
 A = 12
 B = 9
 X = 1
@@ -734,8 +734,7 @@ Y = 4
 
 import time
 from datetime import datetime
-now = datetime.now()
-ts = now.strftime("%H%M%S")
+ts = datetime.strftime(datetime.now(),'%Y%m%d_%H%M%S')  #timestamp
 fname_txt = os.path.join('logs', path.split('/')[1].split('.jpg')[0]+'_%s.txt' %ts)
 file_txt = open(fname_txt,"w") 
 
