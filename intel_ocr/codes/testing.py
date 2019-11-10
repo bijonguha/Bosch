@@ -711,8 +711,8 @@ def analysis(image_path, df_chars):
     df_res = pd.DataFrame()
 
     for i in range(len(df_chars)):
-        df = df_chars.iloc[i,2].copy()
-        df['line_val'] = df_chars.iloc[i,3].copy()
+        df = df_chars.iloc[i,2]
+        df['line_val'] = df_chars.iloc[i,3]
         df_res = pd.concat([df_res,df[['box_num','line_name','pred','exp','line_val']]], ignore_index=True)
     
     df_orig = pd.read_hdf(data_dir)
@@ -728,10 +728,6 @@ def analysis(image_path, df_chars):
     arr_orig = df_orig['bo_ln'].unique()
     arr_res = df_res['bo_ln'].unique()
  
-#    tp_l = len(arr_orig[np.array([item in arr_res for item in arr_orig])])
-#    fp_l = len(arr_res) - len(arr_res[np.array([item in arr_orig for item in arr_res])])
-#    fn_l = len(arr_orig[~np.array([item in arr_res for item in arr_orig])])
-    
     diff_line = np.setdiff1d(arr_orig, arr_res)
     acc_line = (1 - (len(diff_line)/len(arr_orig))) * 100
     
@@ -742,9 +738,6 @@ def analysis(image_path, df_chars):
     df_orig['bo_ln_ch'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
                           str(row['line_name'])+'-'+str(row['char']), axis=1)
     
-#    tp_c = len(df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch']))
-#    fp_c = len(df_res['bo_ln_ch']) - len(df_res['bo_ln_ch'].isin(df_orig['bo_ln_ch']))
-#    fn_c = len(df_orig[~df_orig['bo_ln_ch'].isin(df_res['bo_ln_ch'])])
     
     diff_char_left = np.setdiff1d(df_orig['bo_ln_ch'].values, df_res['bo_ln_ch'].values)
     diff_char_right = np.setdiff1d(df_res['bo_ln_ch'].values, df_orig['bo_ln_ch'].values)
@@ -762,9 +755,6 @@ def analysis(image_path, df_chars):
     df_orig_exp['ch_exp'] = df_orig.apply(lambda row: str(row['box_num'])+'-'+\
                           str(row['line_name'])+'-'+str(row['char'])+'-'+str(row['exp']), axis=1)
     
-#    tp_e = len(df_orig_exp['ch_exp'].isin(df_res_exp['ch_exp']))
-#    fp_e = len(df_res_exp) - len(df_res_exp['ch_exp'].isin(df_orig_exp['ch_exp']))
-#    fn_e = len(df_orig_exp[~df_orig_exp['ch_exp'].isin(df_res_exp['ch_exp'])])
     
     diff_exp = np.setdiff1d(df_orig_exp['ch_exp'].values, df_res_exp['ch_exp'].values)
     acc_exp = (1 - (len(diff_exp)/len(df_orig_exp['ch_exp'])))*100
@@ -778,10 +768,6 @@ def analysis(image_path, df_chars):
         
     arr_origV = df_orig['bo_ln_val'].unique()
     arr_resV = df_res['bo_ln_val'].unique()
-
-#    tp_lv = len(arr_origV[np.array([item in arr_resV for item in arr_origV])])
-#    fp_lv = len(arr_resV) - len(arr_resV[np.array([item in arr_origV for item in arr_resV])])
-#    fn_lv = len(arr_origV[~np.array([item in arr_resV for item in arr_origV])])
 
     diff_line_val = np.setdiff1d(arr_origV, arr_resV)
     acc_line_val = (1 - (len(diff_line_val)/len(arr_origV))) * 100
@@ -835,4 +821,29 @@ df_all.columns = ['image_name', 'line_det', 'char_det', 'exp_det', 'Color_predic
 
 df_all.describe()
 
+df_final = pd.DataFrame()
+df_final['Intermediate Steps of Line'] = df_all.apply(lambda x : (x['line_det'] + x['char_det'] + x['exp_det'])/3, axis = 1 )
+df_final['Line Correctness Accuracy'] = df_all['Color_prediction'].copy()
+df_final['image_name'] = df_all.image_name.copy()
 #%%
+import seaborn as sns
+df_final.plot(x='image_name', y=['Intermediate Steps of Line'], kind='bar')
+plt.ylabel('Accuracy Values')
+
+plt.axhline(y=90, color='b', linestyle='--')
+plt.axhline(y=98, color='#ffa500')
+plt.axhline(y=94, color='#1919ff')
+#%%
+sns.barplot(x='image_name', y='Intermediate Steps of Line', palette=sns.color_palette("colorblind"), data=df_final)
+plt.axhline(y=90, color='b', linestyle='--')           
+plt.axhline(y=98, color='#00ffcc',linewidth=3)
+plt.title('Intermediate Steps of Line - Accuracy values')
+plt.xticks(rotation=45)
+plt.yticks((90,98),['Required   \nAccuracy: 90','Current   \nAccuracy: 98'])
+#%%
+sns.barplot(x='image_name', y='Line Correctness Accuracy', palette=sns.color_palette("colorblind"), data=df_final)
+plt.axhline(y=88, color='b', linestyle='--')           
+plt.axhline(y=93, color='#1aff1a',linewidth=3)
+plt.title('Line Correctness Accuracy - Accuracy values')
+plt.xticks(rotation=45)
+plt.yticks((90,93),['Required   \nAccuracy: 90','Current   \nAccuracy: 93.5'])
