@@ -33,7 +33,7 @@ try:
 except:
     print('Model couldnot be loaded')
 
-def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
+def image_resize(image, width = None, height = None, inter = cv2.INTER_LINEAR):
     # initialize the dimensions of the image to be resized and
     # grab the image size
     dim = None
@@ -487,9 +487,7 @@ def evaluate(df,A,B,X,Y):
         pred = "".join(list(pred+df["pred"]))
         
         try:
-            file_txt.write(pred)
             ans = eval_expr(pred)
-            file_txt.write("\n")
         except:
             #This except block is fired when brackets are un necessarily used 
             #while writing the answerscripts and in strings
@@ -508,7 +506,6 @@ def evaluate(df,A,B,X,Y):
                 
 
             ans = eval_expr(pred)
-            file_txt.write("\n")
             
         
         print(pred)
@@ -521,8 +518,7 @@ def evaluate(df,A,B,X,Y):
 #        print(ans, actual, val)
         
     except Exception as e:
-        file_txt.write(" -%s \n" %e)
-        print(e)
+        print(pred,'-',e)
         return 5
     
     return actual==ans
@@ -623,12 +619,29 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     '''
     #reading image
     img_i = cv2.imread(image_path)
-    img = image_resize(img_i, height = 4676, width = 3307) 
+    
+    #Aspect Ratio calculation
+    asp_h = img_i.shape[0]
+    asp_w = img_i.shape[1]
+    asp_ratio = round(asp_h/asp_w , 1)
+    
+    if(asp_ratio != 1.4):
+        print('Poor Image Aspect Ratio : Results Will be affected')
+    
+    if (asp_h > 4676):#Oversized image
+        img = image_resize(img_i, height = 4676, width = 3307, inter = cv2.INTER_AREA)
+    elif(asp_h < 4676):#Less sized image
+        img = image_resize(img_i, height = 4676, width = 3307, inter = cv2.INTER_LINEAR)
+        print('Image less than 300 dpi might have reduced accuracy')
+    else:
+        img = img_i
+        
+    
     #Workspaces Detection
     workspaces = extract_box(img)
     
     if(len(workspaces) != 3):
-        print('Invalid worksheet image passed')
+        print('Invalid worksheet image passed, please scan properly')
         return -1
     #Defining dataframe for storing infos about every line detected
     df_lines = pd.DataFrame()
@@ -685,7 +698,6 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
     
     for bn in box_nums:
-        file_txt.write('BOX %d\n' %(bn+1))
         print('BOX %d' %(bn+1))
         box_img = dict_clean_img[bn] #For Processing B/W image
         box_img_1 = dict_img[bn] #For saving results
@@ -726,7 +738,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-path = 'data/image_5.jpg'
+path = 'data/image_20.jpg'
 A = 12
 B = 9
 X = 1
@@ -735,15 +747,8 @@ Y = 4
 import time
 from datetime import datetime
 ts = datetime.strftime(datetime.now(),'%Y%m%d_%H%M%S')  #timestamp
-fname_txt = os.path.join('logs', path.split('/')[1].split('.jpg')[0]+'_%s.txt' %ts)
-file_txt = open(fname_txt,"w") 
-
 start = time.time()
 checker(path, A,B,X,Y)
-
-file_txt.close()
 print(time.time()-start)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
-
-
