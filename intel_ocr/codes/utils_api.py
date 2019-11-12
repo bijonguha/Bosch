@@ -18,7 +18,10 @@ import math
 import keras
 import ast
 import operator as op
-
+import re
+from datetime import datetime
+import sys
+ 
 #Global Variable
 dict_clean_img = {} #BINARY IMAGE DICTIONAY
 dict_img = {} #ORIGINAL IMAGE DICTIONARY
@@ -28,11 +31,11 @@ keras.backend.set_image_data_format("channels_first")
 
 #loading models
 try:
-    model = keras.models.load_model('models/DCNN_SGD_10AD_sy.h5')
+    model = keras.models.load_model('models/DCNN_10AD_sy.h5')
 except:
-    print('Model couldnot be loaded')
+    print('Model could not be loaded',file=sys.stderr)
 
-def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
+def image_resize(image, width = None, height = None, inter = cv2.INTER_LINEAR):
     # initialize the dimensions of the image to be resized and
     # grab the image size
     dim = None
@@ -308,6 +311,10 @@ def find_good_contours_thres(conts, alpha = 0.002):
     Function to find threshold of good contours on basis of 10% of maximum area
     Input: Contours, threshold for removing noises
     Output: Contour area threshold
+    
+    For image dim 3307*4676
+    alpha(text_segment) = 0.01
+    alpha(extract_line) = 0.002
     '''
     #Calculating areas of contours and appending them to a list
     areas = []
@@ -319,7 +326,7 @@ def find_good_contours_thres(conts, alpha = 0.002):
     
     return thres
 
-def extract_line(image, beta=0.7, show = True):
+def extract_line(image, beta=0.7, alpha=0.002, show = True):
     '''
     Function to extracts the line from the image   
     Assumption : Sufficient gap b/w lines
@@ -327,6 +334,7 @@ def extract_line(image, beta=0.7, show = True):
     argument:
         img (array): image array
         beta (0-1) : Parameter to differentiate line
+        alpha (0-1) : Parameter to select good contours
         show(bool) : to show figures or not
     output:
         uppers[diff_index]  : Upper points (x,y)
@@ -360,7 +368,7 @@ def extract_line(image, beta=0.7, show = True):
     else:
         contours,hierarchy = cv2.findContours(dilation,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
         
-    cont_thresh = find_good_contours_thres(contours)
+    cont_thresh = find_good_contours_thres(contours, alpha=alpha)
 
     #Creating a mask of only ones    
     mask = np.ones(dilation.shape[:2], dtype="uint8") * 255
@@ -394,24 +402,26 @@ def extract_line(image, beta=0.7, show = True):
     uppers = uppers[diff_index_1]
     lowers = lowers[diff_index_1]
     
-    #Extending uppers and lowers indexes to avoid cutting of chars
+    #Extending uppers and lowers indexes to avoid cutting of chars of lines
+    #Extended more uppers by 33% as exponential might lie above 
     uppers[1:] = [i-int(j)/3 for i,j in zip(uppers[1:], diff_1[1:])]
     lowers[:-1] = [i+int(j)/4 for i,j in zip(lowers[:-1], diff_1[:-1])]
     
     diff_2 = np.array([j-i for i,j in zip(uppers,lowers)])
     diff_index_2 = np.array([True]*len(uppers))
     
-    #Combining rogue exponentials into their deserving lines
+    #Combining rogue exponentials into their deserving lines. This happens when
+    #exponential and lines are separated by some distance
     for i,diff in enumerate(diff_2):
         if(i>0):
             if( (diff_2[i-1] < (diff/2)) and (( lowers[i-1]-uppers[i]) > ((lowers[i-1]-uppers[i-1])/4)) ):
                 uppers[i] = uppers[i-1]
                 diff_2[i] = diff_2[i]+diff_2[i-1]
                 diff_index_2[i-1] = False
-                #print('Merging')
+                print('Merging')
 
     diff_index = diff_index_2
-                
+    
     cleaned_orig_rec = cv2.cvtColor(cleaned_orig, cv2.COLOR_GRAY2BGR)
     
     #For changing color of intermediate lines, keeping count
@@ -462,13 +472,6 @@ def extract_line(image, beta=0.7, show = True):
     
     return cleaned_orig, uppers[diff_index], lowers[diff_index]
 
-#Y1=102
-#Y2=282
-#X1=0
-#X2=2695
-#line_name=00
-#box_num=0
-#dict_clean = dict_clean_img
 
 def evaluate(df,A,B,X,Y):
     '''Function to evaluate mathematical equation and give bool output
@@ -478,23 +481,47 @@ def evaluate(df,A,B,X,Y):
         Boolean T/F
     '''
     #Evaluating Expression
-    actual = A**X+B*Y
+    actual = A*X*X+(B*Y)
     
     
     try:#If BODMAS is correct and Mathematically equation is correct
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
-        #print("pred ",pred)
-        ans = eval_expr(pred)
         
-        if(ans == actual):
-            val='Correct'
-        else:
-            val='Wrong'
-        #print(ans, actual, val)
+        try:
+            ans = eval_expr(pred)
+        except:
+            #This except block is fired when brackets are un necessarily used 
+            #while writing the answerscripts and in strings
+            matches_left = re.findall(r'\d\(\d', pred)
+            matches_right = re.findall(r'\d\)\d', pred)
+            
+            for s in matches_left:
+                sn = s.split('(')
+                snew = sn[0]+'*('+sn[1]
+                pred = pred.replace(s,snew)    
+                
+            for s in matches_right:
+                sn = s.split(')')
+                snew = sn[0]+')*'+sn[1]
+                pred = pred.replace(s,snew) 
+                
+
+            ans = eval_expr(pred)
+            
+        
+        print(pred,file=sys.stderr)
+        
+        
+#        if(ans == actual):
+#            val='Correct'
+#        else:
+#            val='Wrong'
+#        print(ans, actual, val)
+        
     except Exception as e:
-        print(e)
-        return False
+        print(pred,'-',e,file=sys.stderr)
+        return 5
     
     return actual==ans
 
@@ -502,6 +529,16 @@ def evaluate(df,A,B,X,Y):
 def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
     '''
     text_segment : Function to segment the characters
+    Input:
+        Box coordinates -X1,Y1,X2,Y2
+        box_num - name of box
+        line_name - name of line
+        model - Deep Learning model to be used for prediction
+        dict_clean - dictionary of clean box images
+    Output :
+        box_num - name of box
+        line_name -name of line
+        df_char - Dataframe of characters of that particular line
     '''
     img = dict_clean[box_num][Y1:Y2,X1:X2].copy()
     L_H = Y2-Y1
@@ -534,16 +571,16 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
             exp = 0
             if i+1 != len(contours_sorted):
                 x1,y1,w1,h1 = bounding_boxes[i+1]
-                if abs(x-x1) < 20:
-                    
-                    minX = min(x,x1)
-                    minY = min(y,y1)
-                    maxX = max(x+w, x1+w1)
-                    maxY = max(y+h, y1+h1)
-                    x,y,x11,y11 = minX, minY, maxX, maxY
-                    
-                    x,y,w,h = x,y,x11-x,y11-y
-                    i = i+1
+#                if abs(x-x1) < 10:
+#                    
+#                    minX = min(x,x1)
+#                    minY = min(y,y1)
+#                    maxX = max(x+w, x1+w1)
+#                    maxY = max(y+h, y1+h1)
+#                    x,y,x11,y11 = minX, minY, maxX, maxY
+#                    
+#                    x,y,w,h = x,y,x11-x,y11-y
+#                    i = i+1
             
             #char_locs.append([x,y,x+w,y+h])     
             if(h<0.25*L_H and w<0.25*L_H):
@@ -570,7 +607,8 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     df_char = pd.DataFrame(char_locs)
     df_char.columns=['X1','Y1','X2','Y2','area']
     df_char['exp'] = char_type
-    df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],c['Y1'],c['X2'], c['Y2'],model), axis=1 )
+    df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],\
+           c['Y1'],c['X2'], c['Y2'],model), axis=1 )
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     return [box_num,line_name,df_char]
@@ -583,17 +621,37 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     '''
     #reading image
     img_i = cv2.imread(image_path)
-    img = image_resize(img_i, height = 4676, width = 3307) 
+
+    if(type(img_i) != np.ndarray):
+        return 'Invalid Image passed'
+    
+    #Aspect Ratio calculation
+    asp_h = img_i.shape[0]
+    asp_w = img_i.shape[1]
+    asp_ratio = round(asp_h/asp_w , 1)
+    
+    if(asp_ratio != 1.4):
+        print('Poor Image Aspect Ratio : Results Will be affected')
+    
+    if (asp_h > 4676):#Oversized image
+        img = image_resize(img_i, height = 4676, width = 3307, inter = cv2.INTER_AREA)
+    elif(asp_h < 4676):#Less sized image
+        img = image_resize(img_i, height = 4676, width = 3307, inter = cv2.INTER_LINEAR)
+        print('Image less than 300 dpi might have reduced accuracy')
+    else:
+        img = img_i
+        
+    
     #Workspaces Detection
-    workspaces = extract_box(img, show=False)
+    workspaces = extract_box(img)
     
     if(len(workspaces) != 3):
-        print('Invalid worksheet image passed')
+        print('Invalid worksheet image passed, please scan properly')
         return -1
     #Defining dataframe for storing infos about every line detected
     df_lines = pd.DataFrame()
     
-    for r,rect in enumerate(workspaces):
+    for r,rect in enumerate(workspaces): 
         #Cropping boxes for sending to line detection module
         box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
         H,W = box.shape[:2]
@@ -601,6 +659,9 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         cleaned_orig,y1s,y2s = extract_line(box, show=False)
         x1s = [0]*len(y1s)
         x2s = [W]*len(y1s)
+        
+#        if(len(y1s)-len(y2s) == 0):
+#            print('Lines in workspace-%d : %d' %(r, len(y1s)))
         
         df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
         df.columns = ['y1','y2','x1','x2']
@@ -618,7 +679,8 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     #df_chars contains locations of all characters along with box_num and line name
     list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, show=False), axis=1))
+                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, \
+                 show=False), axis=1))
     
     df_chars = pd.DataFrame(list_chars)
     df_chars.columns = ['box_num', 'line_name', 'char_df']
@@ -639,9 +701,11 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     #Keeping only those characters whose area of contours is above area threshold
     df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
-    
+    images = []
+    image_number = 0
+    print(image_path,file=sys.stderr)
     for bn in box_nums:
-        print('BOX %d' %(bn+1))
+        print('BOX %d' %(bn+1),file=sys.stderr)
         box_img = dict_clean_img[bn] #For Processing B/W image
         box_img_1 = dict_img[bn] #For saving results
         box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
@@ -659,27 +723,45 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         height = int(box_img.shape[0] * scale_percent / 100)
         dim = (width, height)    
         box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
-    #    ax = fig3.add_subplot(3,1,bn+1)
-    #    ax.axis('off')
-    #    ax.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
     
         #Drawing rectangle on original Image
         df_l['line_status'] = list(df['line_status']) 
         df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
-          c['y2']),(0,255*(c['line_status']==True),255*(c['line_status']==False)),2), axis=1) 
-        #print(df_l)
+          c['y2']),(255*(c['line_status']==5),255*(c['line_status']==True),\
+                                   255*(c['line_status']==False)),2), axis=1)
         
-#        plt.figure(figsize=(13,7))
-#        plt.title('Box - %d' %(bn+1) )
-#        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-        fname = os.path.join('output','image%d.jpg' %(bn+1))
+        #plt.figure(figsize=(13,7))
+        #plt.title('Box - %d' %(bn+1) )
+        #plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+        #plt.figure()
+        #plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
+
+        image_name = 'image%d_%s.jpg' %(bn+1, ts)
+        fname = os.path.join('static','image%d_%s.jpg' %(bn+1, ts))
+        print(fname)
+        images.append(image_name)
         plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+        fname_2 = os.path.join('logs/',image_path.split('/')[1].split('.jpg')[0]\
+                               +'b%d_%s.jpg' %(bn+1,ts))
+        plt.imsave(fname_2,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
         del df
         del df_l
     
-    return 1
+    return images
 #%%
-#checker('data/image_8.jpg', 2,2,98,3)
+#path = 'data/image_20.jpg'
+#A = 12
+#B = 9
+#X = 1
+#Y = 4
+
+#import time
+#from datetime import datetime
+ts = datetime.strftime(datetime.now(),'%Y%m%d_%H%M%S')  #timestamp
+
+#start = time.time()
+#checker(path, A,B,X,Y)
+
+#print(time.time()-start)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
-

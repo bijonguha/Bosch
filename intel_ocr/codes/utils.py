@@ -620,6 +620,8 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     #reading image
     img_i = cv2.imread(image_path)
     
+    if(type(img_i) != np.ndarray):
+        return 'Invalid Image passed'
     #Aspect Ratio calculation
     asp_h = img_i.shape[0]
     asp_w = img_i.shape[1]
