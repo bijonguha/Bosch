@@ -1,72 +1,72 @@
 <!-- <div id="cover-spin" ></div> -->
 <div id="cover-spin" *ngIf="loaderhide_Show == true"></div> 
 <div class="container-fluid" style="padding-top: 10px">
- <div class="row">
-         <div class="col-sm-3 card" style="margin-left: 12px;">
-               <form name="form" (ngSubmit)="f.form.valid && onSubmit()" #f="ngForm" novalidate>                 
-                           <div class="form-group" style="display: flex;margin-top:10px;font-size: 21px">
-                              <label class="col-sm-12 control-label" style="font-size: 21px;font-weight: bold;">Solve Ax2+ By = ? </label>
-                           </div> 
-                           <div class="form-group centertext" style="display: flex;">
-                              <label class="col-sm-5 control-label">A = </label>
-                              <div class="col-sm-7">                               
-                                <input type="number" class="form-control" name="a" [(ngModel)]="aValue" #a="ngModel"  [ngClass]="{ 'is-invalid': f.submitted && a.invalid }" required />
-                                <div *ngIf="f.submitted && a.invalid" class="invalid-feedback">
-                                    <div *ngIf="a.errors.required">Number is required</div>
-                                </div>
-                              </div>
-                           </div> 
-                           <div class="form-group centertext" style="display: flex;">
-                                <label class="col-sm-5 control-label">B = </label>
-                                <div class="col-sm-7">
-                                <input type="number" class="form-control" name="b" [(ngModel)]="bValue" #b="ngModel" [ngClass]="{ 'is-invalid': f.submitted && b.invalid }" required />
-                                 <div *ngIf="f.submitted && b.invalid" class="invalid-feedback">
-                                     <div *ngIf="b.errors.required">Number is required</div>
-                                 </div>
-                                </div>
-                             </div>
-                             <div class="form-group centertext" style="display: flex;">
-                                <label class="col-sm-5 control-label"> X = </label>
-                                <div class="col-sm-7">
-                             <input type="number" class="form-control" name="x" [(ngModel)]="xValue" #x="ngModel" [ngClass]="{ 'is-invalid': f.submitted && x.invalid }" required />
-                                <div *ngIf="f.submitted && x.invalid" class="invalid-feedback">
-                                    <div *ngIf="x.errors.required">Number is required</div>
-                                </div>
-                              </div>
-                             </div>
-                             <div class="form-group centertext" style="display: flex;">
-                                <label class="col-sm-5 control-label"> Y = </label>
-                                <div class="col-sm-7">                                 
-                                  <input type="number" class="form-control" name="y" [(ngModel)]="yValue" #y="ngModel" [ngClass]="{ 'is-invalid': f.submitted && y.invalid }" required />
-                                  <div *ngIf="f.submitted && y.invalid" class="invalid-feedback">
-                                      <div *ngIf="y.errors.required">Number is required</div>
-                                  </div>
-                                </div>
-                             </div>
-                             <div class="file btn btn-lg btn-primary" style="width: 100%;margin-bottom: 20px;position: relative;overflow: hidden;">
-                                        <span>Upload</span>
-                                       <input type="file" name="profile" (change)="onFileSelect($event)"required  />
-                                       
-                              </div>
-                              
+    <div class="row">
+        <div class="col-sm-3 card" style="margin-left: 12px;">
+            <form name="form" (ngSubmit)="f.form.valid && onSubmit()" #f="ngForm" novalidate>
+                <div class ="form-group solvedisplay">
+                    <label class ="col-sm-12 control-label"  style="font-size: 21px;font-weight: bold;">Solve A<span class ="fontsizexy">x</span><sup>2</sup>+ B<span class ="fontsizexy">y</span> = ? </label>
+                </div>
+        <div class="form-group centertext rowdisplay">
+            <label class="col-sm-5 control-label">A = </label>
+            <div class="col-sm-7">
+                <input type="number" class="form-control" name="a" [(ngModel)]="aValue" #a="ngModel" [ngClass]="{ 'is-invalid': f.submitted && a.invalid }" required />
+                <div *ngIf="f.submitted && a.invalid" class="invalid-feedback">
+                    <div *ngIf="a.errors.required">Number is required</div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group centertext rowdisplay">
+            <label class="col-sm-5 control-label">B = </label>
+            <div class="col-sm-7">
+                <input type="number" class="form-control" name="b" [(ngModel)]="bValue" #b="ngModel" [ngClass]="{ 'is-invalid': f.submitted && b.invalid }" required />
+                <div *ngIf="f.submitted && b.invalid" class="invalid-feedback">
+                    <div *ngIf="b.errors.required">Number is required</div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group centertext rowdisplay">
+            <label class="col-sm-5 control-label"> x = </label>
+            <div class="col-sm-7">
+                <input type="number" class="form-control" name="x" [(ngModel)]="xValue" #x="ngModel" [ngClass]="{ 'is-invalid': f.submitted && x.invalid }" required />
+                <div *ngIf="f.submitted && x.invalid" class="invalid-feedback">
+                    <div *ngIf="x.errors.required">Number is required</div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group centertext rowdisplay">
+            <label class="col-sm-5 control-label"> y = </label>
+            <div class="col-sm-7">
+                <input type="number" class="form-control" name="y" [(ngModel)]="yValue" #y="ngModel" [ngClass]="{ 'is-invalid': f.submitted && y.invalid }" required />
+                <div *ngIf="f.submitted && y.invalid" class="invalid-feedback">
+                    <div *ngIf="y.errors.required">Number is required</div>
+                </div>
+            </div>
+        </div>
+        <div class="file btn btn-lg btn-primary fileupload">
+            <span>Upload</span>
+            <input type="file"  class="form-control"  name="profile"  [(ngModel)]="fileupload"  #profile="ngModel"   (change)="onFileSelect($event)"  [ngClass]="{ 'is-invalid': f.submitted && profile.invalid }"  required />
+            <div *ngIf ="f.submitted && profile.invalid"  class="invalid-feedback">
+                <div *ngIf ="profile.errors.required"  class="fileuploadcolor">File Upload is required  </div>
 
-                              <div class="form-group">
-                                 <label class="col-sm-5 control-label">File Name : </label>
-
-                                    <span>{{file}}</span>
-                              
-                             </div>
-
-
-                             <div class="form-group">                              
-                                     <button class="btn btn-lg btn-primary" type="submit"    style="width: 100%;">Recognize</button>
-                              
-                             </div>
-                            
-                            
-                     </form>
-                  
+           </div>
          </div>
+
+        <div class="form-group">
+            <label class="col-sm-5 control-label">File Name : </label>
+            <span>{{file}}</span>
+
+        </div>
+
+        <div class="form-group">
+            <button class="btn btn-lg btn-primary" type="submit" style="width: 100%;">Recognize</button>
+
+        </div>
+
+
+        </form>
+
+    </div>
          <div class="col-sm-8 card" style="margin-left: 20px;">
                         <div *ngIf="noDataFound == false" id="over" class="cardimage"  style="width: auto;height: auto;">
                                 <img [src]="jsondata" style="margin-top:5px;width:auto;object-fit:contain;width:40%">

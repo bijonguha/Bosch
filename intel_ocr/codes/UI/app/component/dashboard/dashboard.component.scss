@@ -50,3 +50,28 @@
   object-fit: contain;
   width: 40%;
 }
+
+.fileupload {
+    width: 100%;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.rowdisplay {
+    display: flex !important;
+}
+
+.solvedisplay {
+    display: flex;
+    margin-top: 10px;
+    font-size: 21px
+}
+
+.fontsizexy {
+    font-size: 12px;
+}
+
+.fileuploadcolor {
+    background-color: white;
+} 
