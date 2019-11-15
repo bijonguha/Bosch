@@ -8,7 +8,7 @@ Created on Fri Oct 25 15:19:33 2019
 import pandas as pd
 import ast
 import operator as op
-
+import re
 '''
 Evaluatore new
 '''
@@ -54,7 +54,28 @@ for i in range(boxes):
 
         flag = 0
         k = 0
-        val = eval_expr(line)
+        pred = line
+        try:
+            val = eval_expr(pred)
+        except:
+            #This except block is fired when brackets are un necessarily used 
+            #while writing the answerscripts and in strings
+            matches_left = re.findall(r'\d\(\d', pred)
+            matches_right = re.findall(r'\d\)\d', pred)
+            
+            for s in matches_left:
+                sn = s.split('(')
+                snew = sn[0]+'*('+sn[1]
+                pred = pred.replace(s,snew)    
+                
+            for s in matches_right:
+                sn = s.split(')')
+                snew = sn[0]+')*'+sn[1]
+                pred = pred.replace(s,snew) 
+                
+
+            val = eval_expr(pred)
+            
         while( k < len(line) ):
             if(line[k] == '*'):
                 if(line[k+1] == '*'):
@@ -73,7 +94,7 @@ data_dict = {'box_num': box_num, 'line_name': line_name, 'char': char, 'exp':exp
 df_chars = pd.DataFrame(data=data_dict, index=None)           
 
 try:
-    filename = 'data/%s.h5' %img_name
+    filename = 'data/kk_images/%s.h5' %img_name
     df_chars.to_hdf(filename, key='df_chars', mode='w')
     print('\nImage annotated file saved as %s' %filename)
 
