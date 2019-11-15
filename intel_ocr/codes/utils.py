@@ -486,31 +486,41 @@ def evaluate(df,A,B,X,Y):
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
         
-        try:
-            ans = eval_expr(pred)
-        except:
-            #This except block is fired when brackets are un necessarily used 
-            #while writing the answerscripts and in strings
-            matches_left = re.findall(r'\d\(\d', pred)
-            matches_right = re.findall(r'\d\)\d', pred)
+        #looking for non digits in the start of the string for 
+        #ignoring equal to's
+        matchesN = re.findall('^\-\-', pred)
+        if(len(matchesN) > 0):
+            for s in matchesN:
+                pred = pred.replace(s,'')       
+                
             
-            for s in matches_left:
+        #lloking for broken 5's
+        matches5 = re.findall(r'5\*\*-\D*', pred)
+        if(len(matches5) > 0):
+            for s in matches5:
+                sn = s.split('5**-')
+                snew = sn[0]+'5'+sn[1]
+                pred = pred.replace(s,snew)  
+
+        
+        #This except block is fired when brackets are un necessarily used 
+        #while writing the answerscripts and in strings
+        matchesB_left = re.findall(r'\d\(\d', pred)
+        matchesB_right = re.findall(r'\d\)\d', pred)
+        
+        if(len(matchesB_left) > 0 or len(matchesB_right) > 0):
+            for s in matchesB_left:
                 sn = s.split('(')
                 snew = sn[0]+'*('+sn[1]
                 pred = pred.replace(s,snew)    
                 
-            for s in matches_right:
+            for s in matchesB_right:
                 sn = s.split(')')
                 snew = sn[0]+')*'+sn[1]
                 pred = pred.replace(s,snew) 
-                
-
-            ans = eval_expr(pred)
-            
         
-        print(pred)
-        
-        
+        ans = eval_expr(pred)
+        print(pred )
 #        if(ans == actual):
 #            val='Correct'
 #        else:
@@ -544,7 +554,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     #Selecting elliptical element for dilation    
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
     dilation = cv2.dilate(img,kernel,iterations = 2)
-    erosion = cv2.dilate(dilation,kernel,iterations = 1)
+    erosion = cv2.erode(dilation,kernel,iterations = 1)
     
     # Find the contours
     if(cv2.__version__ == '3.3.1'):
@@ -569,28 +579,29 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
             exp = 0
             if i+1 != len(contours_sorted):
                 x1,y1,w1,h1 = bounding_boxes[i+1]
-#                if abs(x-x1) < 10:
-#                    
-#                    minX = min(x,x1)
-#                    minY = min(y,y1)
-#                    maxX = max(x+w, x1+w1)
-#                    maxY = max(y+h, y1+h1)
-#                    x,y,x11,y11 = minX, minY, maxX, maxY
-#                    
-#                    x,y,w,h = x,y,x11-x,y11-y
-#                    i = i+1
+                if abs(x-x1) < 10 and  h1+h < 150:
+                    
+                    minX = min(x,x1)
+                    minY = min(y,y1)
+                    maxX = max(x+w, x1+w1)
+                    maxY = max(y+h, y1+h1)
+                    x,y,x11,y11 = minX, minY, maxX, maxY
+                    
+                    x,y,w,h = x,y,x11-x,y11-y
+                    i = i+2
+                    continue
             
             #char_locs.append([x,y,x+w,y+h])     
             if(h<0.25*L_H and w<0.25*L_H):
                 #print('Yes')
                 i=i+1
                 continue
-            
-            char_locs.append([x,y+Y1,x+w,y+h+Y1,w*h]) #Normalised location of char w.r.t box image
+
+            char_locs.append([x-1,y+Y1-1,x+w+1,y+h+Y1+1,w*h]) #Normalised location of char w.r.t box image
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
             if i!=0:
-                if y+h < (L_H*(1/2)) and y < bounding_boxes[i-1][1]:
+                if y+h < (L_H*(1/2)) and y < bounding_boxes[i-1][1] and h < bounding_boxes[i-1][3]:
                     exp = 1
                     cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
             i = i+1
@@ -648,7 +659,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     #Defining dataframe for storing infos about every line detected
     df_lines = pd.DataFrame()
     
-    for r,rect in enumerate(workspaces): 
+    for r,rect in enumerate(workspaces):
         #Cropping boxes for sending to line detection module
         box = img[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
         H,W = box.shape[:2]
