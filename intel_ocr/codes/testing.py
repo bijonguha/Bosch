@@ -512,6 +512,16 @@ def evaluate(df,A,B,X,Y, ret = True):
 def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
     '''
     text_segment : Function to segment the characters
+    Input:
+        Box coordinates -X1,Y1,X2,Y2
+        box_num - name of box
+        line_name - name of line
+        model - Deep Learning model to be used for prediction
+        dict_clean - dictionary of clean box images
+    Output :
+        box_num - name of box
+        line_name -name of line
+        df_char - Dataframe of characters of that particular line
     '''
     img = dict_clean[box_num][Y1:Y2,X1:X2].copy()
     L_H = Y2-Y1
@@ -519,7 +529,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     #Selecting elliptical element for dilation    
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
     dilation = cv2.dilate(img,kernel,iterations = 2)
-    erosion = cv2.dilate(dilation,kernel,iterations = 1)
+    erosion = cv2.erode(dilation,kernel,iterations = 1)
     
     # Find the contours
     if(cv2.__version__ == '3.3.1'):
@@ -561,7 +571,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
                 i=i+1
                 continue
             
-            char_locs.append([x,y+Y1,x+w,y+h+Y1,w*h]) #Normalised location of char w.r.t box image
+            char_locs.append([x-1,y+Y1-1,x+w+1,y+h+Y1+1,w*h]) #Normalised location of char w.r.t box image
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
             if i!=0:
@@ -580,7 +590,8 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     df_char = pd.DataFrame(char_locs)
     df_char.columns=['X1','Y1','X2','Y2','area']
     df_char['exp'] = char_type
-    df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],c['Y1'],c['X2'], c['Y2'],model), axis=1 )
+    df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],\
+           c['Y1'],c['X2'], c['Y2'],model), axis=1 )
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     return [box_num,line_name,df_char]
@@ -802,12 +813,21 @@ image_names =['data/image_1.jpg',
               'data/image_24.jpg',
               'data/image_25.jpg',]
 
+image_names1 = ['data/kk_images/document.jpg',
+                'data/kk_images/document1.jpg',
+                'data/kk_images/document2.jpg',
+                'data/kk_images/document3.jpg',
+                'data/kk_images/document4.jpg',
+                'data/kk_images/document5.jpg',
+                'data/kk_images/document6.jpg',
+                'data/kk_images/document7.jpg',]
+
 df_all = pd.DataFrame()
 
 import time
 t_list = []
 
-for image in image_names:
+for image in image_names1:
     print(image)
     start = time.time()
     image_path = image
