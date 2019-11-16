@@ -174,6 +174,36 @@ def predict(img,x1,y1,x2,y2,model,proba = False):
     '''
     gray = img[y1:y2, x1:x2]
     
+    # Steps to remove noises in image due to cropping
+    temp = gray.copy()
+    
+    kernel_temp = np.ones((3,3), np.uint8) 
+    temp_tmp = cv2.dilate(temp, kernel_temp, iterations=3)
+    
+    # Find the contours -  To check whether its disjoint character or noise
+    if(cv2.__version__ == '3.3.1'): 
+        xyz,contours_tmp,hierarchy = cv2.findContours(temp_tmp,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        contours_tmp,hierarchy = cv2.findContours(temp_tmp,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        
+    if(len(contours_tmp) > 1):
+        # Find the contours
+        if(cv2.__version__ == '3.3.1'): 
+            xyz,contours,hierarchy = cv2.findContours(gray,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        else:
+            contours,hierarchy = cv2.findContours(gray,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        #Creating a mask of only zeros  
+        mask = np.ones(gray.shape[:2], dtype="uint8") * 0
+        #print('Yes')
+        # Find the index of the largest contour
+        areas = [cv2.contourArea(c) for c in contours]
+        max_index = np.argmax(areas)
+        cnt=contours[max_index]
+        
+        cv2.drawContours(mask, [cnt], -1, 255, -1)
+        #Drawing those contours which are noises and then taking bitwise and
+        gray = cv2.bitwise_and(temp, temp, mask=mask)
+    
     # Image Preprocessing
     kernel = np.ones((1,1), np.uint8) 
     gray = cv2.dilate(gray, kernel, iterations=1)    
@@ -387,7 +417,7 @@ def extract_line(image, beta=0.7, alpha=0.002, show = True):
     cleaned_img = cv2.bitwise_and(temp, temp, mask=mask)
     
     #Dilating the cleaned image for better detection of line in cases where
-    #exponents are little up then line
+    #exponents are little up the line
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
     dil_cleaned_img = cv2.dilate(cleaned_img,kernel,iterations = 10)
     
@@ -501,7 +531,7 @@ def evaluate(df,A,B,X,Y):
                 pred = pred.replace(s,'')       
                 
             
-        #lloking for broken 5's
+        #looking for broken 5's
         matches5 = re.findall(r'5\*\*-\D*', pred)
         if(len(matches5) > 0):
             for s in matches5:
@@ -762,7 +792,8 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-path = 'data/kk_images/document4.jpg'
+path = 'data/kk_images/document1.jpg'
+#path = 'data/mods/document_c2.jpg'
 A = 12
 B = 9
 X = 1
