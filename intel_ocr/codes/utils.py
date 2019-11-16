@@ -32,7 +32,7 @@ try:
     model = keras.models.load_model('models/DCNN_10AD_sy.h5')
 except:
     print('Model couldnot be loaded')
-
+#%%
 def image_resize(image, width = None, height = None, inter = cv2.INTER_LINEAR):
     # initialize the dimensions of the image to be resized and
     # grab the image size
@@ -161,7 +161,7 @@ def shift(img,sx,sy):
     return shifted
 
 
-def predict(img,x1,y1,x2,y2,model):
+def predict(img,x1,y1,x2,y2,model,proba = False):
     '''
     predict  : Function to predict the character
     argument:
@@ -220,11 +220,19 @@ def predict(img,x1,y1,x2,y2,model):
     gray = gray/255
     # Prediction
     classes = model.predict(gray, batch_size=2)
-    index = np.argmax(classes[0])  
+    ind1,ind2 = np.argpartition(classes[0], -2)[-2:]
     c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
-
-#    print(c[index])
-    return c[index]
+    
+    if(c[ind1] == '2' and c[ind2] == '9' and classes[0][ind1] > 0.40):
+        return c['ind1']
+    
+    #if(c[ind2] == '9'):
+    #print(c[ind1],c[ind2], classes[0][ind1], classes[0][ind2])
+    
+    if (proba == True):
+        return classes[0][ind2]
+    
+    return c[ind2]
 
 def extract_box(img, show=True):
     '''
@@ -381,7 +389,7 @@ def extract_line(image, beta=0.7, alpha=0.002, show = True):
     #Dilating the cleaned image for better detection of line in cases where
     #exponents are little up then line
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-    dil_cleaned_img = cv2.dilate(cleaned_img,kernel,iterations = 5)
+    dil_cleaned_img = cv2.dilate(cleaned_img,kernel,iterations = 10)
     
     #Getting back the cleaned original image without noise
     cleaned_orig = cv2.erode(cleaned_img, kernel, iterations=1) 
@@ -412,7 +420,7 @@ def extract_line(image, beta=0.7, alpha=0.002, show = True):
     #exponential and lines are separated by some distance
     for i,diff in enumerate(diff_2):
         if(i>0):
-            if( (diff_2[i-1] < (diff/2)) and (( lowers[i-1]-uppers[i]) > ((lowers[i-1]-uppers[i-1])/4)) ):
+            if( (diff_2[i-1] < (diff/2)) and (( lowers[i-1]-uppers[i]) > ((lowers[i-1]-uppers[i-1])/5)) ):
                 uppers[i] = uppers[i-1]
                 diff_2[i] = diff_2[i]+diff_2[i-1]
                 diff_index_2[i-1] = False
@@ -481,7 +489,6 @@ def evaluate(df,A,B,X,Y):
     #Evaluating Expression
     actual = A*X*X+(B*Y)
     
-    
     try:#If BODMAS is correct and Mathematically equation is correct
         pred = df["exp"].apply(lambda d: "**" if d==1 else "")
         pred = "".join(list(pred+df["pred"]))
@@ -526,6 +533,8 @@ def evaluate(df,A,B,X,Y):
 #        else:
 #            val='Wrong'
 #        print(ans, actual, val)
+        if(df['pred_proba'].mean() < 0.90):
+            return 5
         
     except Exception as e:
         print(pred,'-',e)
@@ -533,7 +542,7 @@ def evaluate(df,A,B,X,Y):
     
     return actual==ans
 
-
+#%%
 def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
     '''
     text_segment : Function to segment the characters
@@ -562,7 +571,7 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     else:
         contours,hierarchy = cv2.findContours(erosion,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
         
-    ct_th = find_good_contours_thres(contours, alpha=0.01)
+    ct_th = find_good_contours_thres(contours, alpha=0.005)
     cnts = []
     for c in contours:       
         if( cv2.contourArea(c)**2 > ct_th):
@@ -579,8 +588,8 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
             exp = 0
             if i+1 != len(contours_sorted):
                 x1,y1,w1,h1 = bounding_boxes[i+1]
-                if abs(x-x1) < 10 and  h1+h < 150:
-                    
+                if abs(x-x1) < 10 and  (h1+h) < 70:
+                    #print(h+h1)
                     minX = min(x,x1)
                     minY = min(y,y1)
                     maxX = max(x+w, x1+w1)
@@ -592,12 +601,12 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
                     continue
             
             #char_locs.append([x,y,x+w,y+h])     
-            if(h<0.25*L_H and w<0.25*L_H):
+            if(h<0.10*L_H and w<0.10*L_H):
                 #print('Yes')
                 i=i+1
                 continue
 
-            char_locs.append([x-1,y+Y1-1,x+w+1,y+h+Y1+1,w*h]) #Normalised location of char w.r.t box image
+            char_locs.append([x-2,y+Y1-2,x+w+1,y+h+Y1+1,w*h]) #Normalised location of char w.r.t box image
             
             cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
             if i!=0:
@@ -618,10 +627,12 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
     df_char['exp'] = char_type
     df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],\
            c['Y1'],c['X2'], c['Y2'],model), axis=1 )
+    df_char['pred_proba'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],\
+           c['Y1'],c['X2'], c['Y2'],model, proba=True), axis=1 )
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     return [box_num,line_name,df_char]
-
+#%%
 def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     '''
     argument:
@@ -722,7 +733,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, \
           (c['X1'],c['Y1']),(c['X2'], c['Y2']),(255*(c['exp']==1),180,0),2+(2*c['exp'])), axis=1 ) )
         
-        df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y))
+        df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp","pred_proba"]],A,B,X,Y))
         
         scale_percent = 200 # percent of original size
         width = int(box_img.shape[1] * scale_percent / 100)
@@ -751,11 +762,13 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     return 1
 #%%
-path = 'data/image_20.jpg'
+path = 'data/kk_images/document4.jpg'
 A = 12
 B = 9
 X = 1
 Y = 4
+
+plt.close('all')
 
 import time
 from datetime import datetime
@@ -765,3 +778,4 @@ checker(path, A,B,X,Y)
 print(time.time()-start)
 #checker("C://Users//DMV4KOR//Desktop//Bosch-master//intel_ocr//codes//data//image_3.jpg")
 #%%
+image_path = 'data/kk_images/document.jpg'
