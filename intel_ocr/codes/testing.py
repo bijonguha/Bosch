@@ -12,14 +12,19 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import os
 from scipy import ndimage
 import math
 import keras
 import ast
 import operator as op
 import re
-import math
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+#Suppressing warning
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
 
 #Global Variable
 dict_clean_img = {} #BINARY IMAGE DICTIONAY
@@ -31,12 +36,22 @@ keras.backend.set_image_data_format("channels_first")
 #loading models
 try:
     model = keras.models.load_model('models/DCNN_10AD_sy.h5')
+    model_robusta = keras.models.load_model('models/DCNN_10AD_2_sy.h5')
+    #Model_Robusta is used when model predicts with lower probability
 except:
     print('Model couldnot be loaded')
 #%%
 def image_resize(image, width = None, height = None, inter = cv2.INTER_LINEAR):
-    # initialize the dimensions of the image to be resized and
-    # grab the image size
+    '''
+    image_resize : Function to resize images
+    argument:
+        image (Matrix)  : image to resize
+        width (Integer) : width of the required image 
+        height (Integer): height of required image
+        inter (Method)  : Interpolation/Extrapolation method
+    output:
+        image (Matrix)  : image resized
+    '''
     dim = None
     (h, w) = image.shape[:2]
 
@@ -66,7 +81,7 @@ def image_resize(image, width = None, height = None, inter = cv2.INTER_LINEAR):
     return resized
 
 '''
-Evaluatore new
+Evaluate New
 '''
 # supported operators
 operators = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
@@ -162,19 +177,26 @@ def shift(img,sx,sy):
     return shifted
 
 
-def predict(img,x1,y1,x2,y2,model,proba = False):
+#Data Generator using tensorflow method
+train_datagen = ImageDataGenerator(   
+    data_format='channels_first',
+    zca_whitening = True,
+    rotation_range = 0.2)
+
+def predict(img,x1,y1,x2,y2, proba = False, acc_thresh = 0.60):
     '''
     predict  : Function to predict the character
     argument:
         x1,y1(int,int)    : Top left corner point
         x2,y2(int,int)    : Bottom right corner point
-        model             : deep learning model
+        acc_thresh(0-1)   : Probability threshold for calling model_robusta
+        proba(bool)       : If probability values is wanted in return
     output:
         c[index](int) : predicted character 
     
     '''
     gray = img[y1:y2, x1:x2]
-    
+
     # Steps to remove noises in image due to cropping
     temp = gray.copy()
     
@@ -204,14 +226,65 @@ def predict(img,x1,y1,x2,y2,model,proba = False):
         cv2.drawContours(mask, [cnt], -1, 255, -1)
         #Drawing those contours which are noises and then taking bitwise and
         gray = cv2.bitwise_and(temp, temp, mask=mask)
+        
+    grayN = process_img (gray, resize_flag = 0)
     
-    # Image Preprocessing
-    kernel = np.ones((1,1), np.uint8) 
-    gray = cv2.dilate(gray, kernel, iterations=1)    
-    gray = cv2.GaussianBlur(gray,(7,7),0)
-    gray = cv2.dilate(gray, kernel, iterations=2)
-    gray = cv2.erode(gray, kernel,iterations=1)
-    # Removing rows and columns where all the pixels are black
+    classes = model.predict(grayN, batch_size=2)
+    ind = np.argmax(classes)
+    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
+
+    if(c[ind] == '5' or c[ind] == '6'):
+        #print('5/6 got called, Previous:',c[ind])
+        grayN_1 = process_img (gray, resize_flag = 1)
+        classes = model.predict(grayN_1, batch_size=2)
+        ind = np.argmax(classes)
+        #print('5/6 got called, Current:',c[ind])
+        if (proba == True):
+            return classes[0][ind]
+        return c[ind] 
+        
+    if (classes[0][ind] < acc_thresh):
+        #print('Poor Handwriting, Augmenting and Testing Prediction, Previous:',c[ind])
+        grayN_2 = process_img (gray, resize_flag = 1, preproc = 1)
+        imgs = train_datagen.flow(grayN_2, batch_size=10)
+        yhats = model_robusta.predict_generator(imgs, steps=10, verbose=0)
+        yhats = np.mean(yhats,axis=0)
+        classes = yhats[:,None].reshape(1,15) 
+        ind = np.argmax(classes)
+        #print('Poor Handwriting, Augmenting and Testing Prediction, Current:',c[ind])
+        if (proba == True):
+            return classes[0][ind]
+        return c[ind]
+    
+    if (proba == True):
+        return classes[0][ind]
+    
+    return c[ind]
+
+def process_img (gray, resize_flag = 1, preproc = 0):
+    '''
+    process_img  : Function to pre process image for prediction
+    argument:
+        gray (Matrix (np.uint8))  : image of character to be resized and processed
+        resize_flag               : method used for resizing image
+        preproc (method [bool])   : 0 : No erosion DIlation, 1 : Erosion, Dilation
+    output:
+        grayS (Matrix (0-1))      : Normalised image of character resized and processed
+    
+    '''    
+    gray = gray.copy()
+    
+    #Image Pre Processing
+    if (preproc == 0):
+        gray = cv2.GaussianBlur(gray,(7,7),0)
+    else :
+        kernel = np.ones((3,3), np.uint8)
+        gray = cv2.dilate(gray, kernel, iterations=1)    
+        gray = cv2.GaussianBlur(gray,(5,5),1)
+        gray = cv2.dilate(gray, kernel, iterations=2)
+        gray = cv2.erode(gray, kernel,iterations=2)    
+    
+    #Removing rows and columns where all the pixels are black
     while np.sum(gray[0]) == 0:
         gray = gray[1:]
 
@@ -225,45 +298,40 @@ def predict(img,x1,y1,x2,y2,model,proba = False):
         gray = np.delete(gray,-1,1)
 
     rows,cols = gray.shape
+    
+    if(resize_flag) == 1:
+        interpolation=cv2.INTER_AREA
+    else:
+        interpolation=cv2.INTER_CUBIC
     # Making the aspect ratio same before re-sizing
     if rows > cols:
         factor = 20.0/rows
         rows = 20
         cols = int(round(cols*factor))
         # first cols than rows
-        gray = cv2.resize(gray, (cols,rows),interpolation=cv2.INTER_CUBIC)
+        gray = cv2.resize(gray, (cols,rows),interpolation=interpolation)
     else:
         factor = 20.0/cols
         cols = 20
         rows = int(round(rows*factor))
         # first cols than rows
-        gray = cv2.resize(gray, (cols, rows),interpolation=cv2.INTER_CUBIC)
+        gray = cv2.resize(gray, (cols, rows),interpolation=interpolation)
+   
     # Padding to a 28 * 28 image
     colsPadding = (int(math.ceil((28-cols)/2.0)),int(math.floor((28-cols)/2.0)))
     rowsPadding = (int(math.ceil((28-rows)/2.0)),int(math.floor((28-rows)/2.0)))
     gray = np.lib.pad(gray,(rowsPadding,colsPadding),'constant')
+    
     # Get the best shifts
     shiftx,shifty = getBestShift(gray)
     shifted = shift(gray,shiftx,shifty)
-    gray = shifted
-    gray = gray.reshape(1,1,28,28)
+    grayS = shifted
+    grayS = grayS.reshape(1,1,28,28)
+    
     #Normalize the image
-    gray = gray/255
-    # Prediction
-    classes = model.predict(gray, batch_size=2)
-    ind1,ind2 = np.argpartition(classes[0], -2)[-2:]
-    c = ['0','1','2','3','4','5','6','7','8','9','+','-','*','(',')']
+    grayS = grayS/255
     
-    if(c[ind1] == '2' and c[ind2] == '9' and classes[0][ind1] > 0.40):
-        return c['ind1']
-    
-    #if(c[ind2] == '9'):
-    #print(c[ind1],c[ind2], classes[0][ind1], classes[0][ind2])
-    
-    if (proba == True):
-        return classes[0][ind2]
-    
-    return c[ind2]
+    return grayS
 
 def extract_box(img, show=True):
     '''
@@ -472,7 +540,7 @@ def extract_line(image, beta=0.7, alpha=0.002, show = True):
             col= col1
         else: 
             col=col2
-        cv2.rectangle(cleaned_orig_rec ,(0+10,left),(W-15,right),col,4)
+        #cv2.rectangle(cleaned_orig_rec ,(0+10,left),(W-15,right),col,4)
         col_ct += 1
         
     if(show == True):
@@ -558,14 +626,7 @@ def evaluate(df,A,B,X,Y, ret = True):
                 pred = pred.replace(s,snew) 
         
         ans = eval_expr(pred)
-#        print(pred )
-#        if(ans == actual):
-#            val='Correct'
-#        else:
-#            val='Wrong'
-#        print(ans, actual, val)
-#        if(df['pred_proba'].mean() < 0.90):
-#            return 5
+        print(pred )
         
     except Exception as e:
         print(pred,'-',e)
@@ -576,8 +637,8 @@ def evaluate(df,A,B,X,Y, ret = True):
     else:
         return ans
 
-#%%
-def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_img, show = True):
+def text_segment(Y1,Y2,X1,X2,box_num,line_name, dict_clean = dict_clean_img,\
+                 acc_thresh = 0.60, show = True):
     '''
     text_segment : Function to segment the characters
     Input:
@@ -633,20 +694,17 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
                     x,y,w,h = x,y,x11-x,y11-y
                     i = i+2
                     continue
-            
-            #char_locs.append([x,y,x+w,y+h])     
+   
             if(h<0.10*L_H and w<0.10*L_H):
                 #print('Yes')
                 i=i+1
                 continue
 
             char_locs.append([x-2,y+Y1-2,x+w+1,y+h+Y1+1,w*h]) #Normalised location of char w.r.t box image
-            
-            cv2.rectangle(img,(x,y),(x+w,y+h),(153,180,255),2)
+
             if i!=0:
                 if y+h < (L_H*(1/2)) and y < bounding_boxes[i-1][1] and h < bounding_boxes[i-1][3]:
                     exp = 1
-                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),2)
             i = i+1
             char_type.append(exp)
     
@@ -655,27 +713,25 @@ def text_segment(Y1,Y2,X1,X2,box_num,line_name, model, dict_clean = dict_clean_i
         plt.axis("on")
         plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         plt.show()
-    
+
     df_char = pd.DataFrame(char_locs)
     df_char.columns=['X1','Y1','X2','Y2','area']
     df_char['exp'] = char_type
     df_char['pred'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],\
-           c['Y1'],c['X2'], c['Y2'],model), axis=1 )
-    df_char['pred_proba'] = df_char.apply(lambda c: predict(dict_clean[box_num],c['X1'],\
-           c['Y1'],c['X2'], c['Y2'],model, proba=True), axis=1 )
+           c['Y1'],c['X2'], c['Y2'], acc_thresh=acc_thresh), axis=1 )
+
     df_char['line_name'] = line_name
     df_char['box_num'] = box_num
     return [box_num,line_name,df_char]
 #%%
-def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
+def checker(image_path,A=-1,B=-1,X=-1,Y=-1, acc_thresh=0.60):
     '''
+    Main driver function to manage calling and executing algorithm
     argument:
         image_path (string): image path
         A, B, X, Y (int)    : coefficients
     '''
     #reading image
-    #image_path = 'data/image_24.jpg'
-    #A=B=X=Y=-1
     img_i = cv2.imread(image_path)
     
     if(type(img_i) != np.ndarray):
@@ -715,9 +771,6 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         x1s = [0]*len(y1s)
         x2s = [W]*len(y1s)
         
-#        if(len(y1s)-len(y2s) == 0):
-#            print('Lines in workspace-%d : %d' %(r, len(y1s)))
-        
         df = pd.DataFrame([y1s,y2s,x1s,x2s]).transpose()
         df.columns = ['y1','y2','x1','x2']
         df['box_num'] = r
@@ -734,43 +787,27 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
     
     #df_chars contains locations of all characters along with box_num and line name
     list_chars = list(df_lines.apply(lambda row: text_segment(row['y1'],row['y2'],\
-                 row['x1'],row['x2'], row['box_num'],row['line_name'], model, \
-                 show=False), axis=1))
+                 row['x1'],row['x2'], row['box_num'],row['line_name'], \
+                 show=False, acc_thresh=acc_thresh), axis=1))
     
     df_chars = pd.DataFrame(list_chars)
     df_chars.columns = ['box_num', 'line_name', 'char_df']
     df_chars['line_val'] = np.nan
-        
-    #Plotting detected Characters
     
     box_nums = df_chars.box_num.unique()
-    #fig3 = plt.figure(figsize=(7,9))
-    #fig3.suptitle('Characters Segmented')
     
     char_area_list = []
     df_chars['char_df'].apply(lambda d: char_area_list.append(list(d['area'])) )
-    
-    #Area based threshold for detecting and removing noises
-    gamma = 0
-    max_ar = max([max(i) for i in char_area_list])
-    ar_thresh = max_ar*gamma
-    
-    #Keeping only those characters whose area of contours is above area threshold
-    df_chars['char_df'] = df_chars['char_df'].apply(lambda d: d[d.area > ar_thresh] )
-    
+        
     for bn in box_nums:
         #print('BOX %d' %(bn+1))
         box_img = dict_clean_img[bn] #For Processing B/W image
-        box_img_1 = dict_img[bn] #For saving results
         box_img = cv2.cvtColor(box_img, cv2.COLOR_GRAY2BGR)
         
         df = df_chars[df_chars.box_num == bn].copy()
         df_l = df_lines[df_lines["box_num"]==bn].copy() #Defining dF with line info
         
-        df['char_df'].apply(lambda d: d.apply(lambda c: cv2.rectangle(box_img, \
-          (c['X1'],c['Y1']),(c['X2'], c['Y2']),(255*(c['exp']==1),180,0),2+(2*c['exp'])), axis=1 ) )
-        
-        df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp","pred_proba"]],A,B,X,Y))
+        df['line_status'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y))
 
         df['line_val'] = df['char_df'].apply(lambda d: evaluate(d[["pred","exp"]],A,B,X,Y, ret=False))
         df_chars['line_val'][df_chars.box_num == bn] = df['line_val']
@@ -780,21 +817,7 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1):
         height = int(box_img.shape[0] * scale_percent / 100)
         dim = (width, height)    
         box_img = cv2.resize(box_img, dim, interpolation = cv2.INTER_AREA)
-    
-        #Drawing rectangle on original Image
-        df_l['line_status'] = list(df['line_status']) 
-        df_l.apply(lambda c: cv2.rectangle(box_img_1, (c['x1'],c['y1']),(c['x2'],\
-          c['y2']),(255*(c['line_status']==5),255*(c['line_status']==True),\
-                                   255*(c['line_status']==False)),2), axis=1)
-        
-#        plt.figure(figsize=(13,7))
-#        plt.title('Box - %d' %(bn+1) )
-#        plt.imshow(cv2.cvtColor(box_img, cv2.COLOR_BGR2RGB))
-#        plt.figure(figsize=(13,7))
-#        plt.title('Box - %d' %(bn+1) )
-#        plt.imshow(cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
-#        fname = os.path.join('output','image%d.jpg' %(bn+1))
-#        plt.imsave(fname,cv2.cvtColor(box_img_1, cv2.COLOR_BGR2RGB))
+
         del df
         del df_l
     plt.close('all')
@@ -873,7 +896,9 @@ def analysis(image_path):
     
     return [acc_line, acc_char, acc_exp, acc_line_val]
 
+
 #%%
+    
 image_names =['data/image_1.jpg',
               'data/image_2.jpg',
               'data/image_3.jpg', #bracket issue
@@ -896,7 +921,7 @@ image_names =['data/image_1.jpg',
               'data/image_20.jpg',
               'data/image_21.jpg',
               'data/image_22.jpg',
-              'data/image_23.jpg', #bracket issue
+              'data/image_23.jpg',
               'data/image_24.jpg',
               'data/image_25.jpg',]
 
@@ -909,15 +934,6 @@ image_names1 = ['data/kk_images/document.jpg',
                 'data/kk_images/document6.jpg',
                 'data/kk_images/document7.jpg']
 
-image_namesM = ['data/mods/document_c2.jpg',
-                'data/mods/document1_c2.jpg',
-                'data/mods/document2_c2.jpg',
-                'data/mods/document3_c2.jpg',
-                'data/mods/document4_c2.jpg',
-                'data/mods/document5_c2.jpg',
-                'data/mods/document6_c2.jpg',
-                'data/mods/document7_c2.jpg']
-
 df_all = pd.DataFrame()
 
 import time
@@ -927,7 +943,7 @@ for image in image_names1:
     print(image)
     start = time.time()
     image_path = image
-    image_name = image.split('/')[2].split('.jpg')[0]
+    image_name = image.split('/')[1].split('.jpg')[0]
     df_tmp = pd.DataFrame([[image_name]+analysis(image_path)+[time.time() - start]])
     df_all = pd.concat([df_all, df_tmp], axis = 0)
     t_list.append([time.time() - start])
