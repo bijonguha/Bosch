@@ -863,8 +863,8 @@ def checker(image_path,A=-1,B=-1,X=-1,Y=-1, acc_thresh=0.60):
     
     return 1
 #%%
-image_path = 'data/bosch_team/image_2.jpg'
-#image_path = 'data/mods/document6_c2.jpg'
+image_path = 'data/bosch_team/image_3.jpg'
+
 A = 56
 B = 7
 X = 3
